@@ -1,0 +1,10 @@
+# 中間生成物（再生成できるのでコミットしない）
+apple_programs.json
+cache_wp.json
+cache_remix.json
+cache_preview/
+cache/
+unmatched.txt
+warnings.txt
+__pycache__/
+.DS_Store

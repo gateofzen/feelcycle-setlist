@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#16121f">
+<title>FEELCYCLE 選曲検索</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#16121f; --surface:#211b2e; --surface-2:#2c2440; --line:#3a3050;
+  --ink:#ede7f5; --muted:#9a8fb0; --dim:#6f6488;
+  --slow:#3fa9c9; --mid:#57b98f; --warm:#c7a227; --hot:#e0426b;
+  --focus:#8f7bd6;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:"Zen Kaku Gothic New",system-ui,sans-serif;
+  font-size:15px; line-height:1.7; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:900px;margin:0 auto;padding:28px 20px 80px}
+a{color:inherit}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:3px}
+
+/* ---- ヘッダ */
+header{display:flex;align-items:baseline;gap:14px;margin-bottom:22px;flex-wrap:wrap}
+h1{font-family:Anton,sans-serif;font-weight:400;font-size:30px;letter-spacing:.02em;
+   margin:0;line-height:1}
+.stat{color:var(--dim);font-size:13px}
+
+/* ---- 検索 */
+.searchbar{position:relative}
+#q{
+  width:100%;padding:16px 18px;font-size:19px;
+  background:var(--surface);color:var(--ink);
+  border:1px solid var(--line);border-radius:10px;
+}
+#q::placeholder{color:var(--dim)}
+.hint{font-size:12.5px;color:var(--dim);margin:8px 2px 0}
+.hint code{background:var(--surface-2);padding:1px 6px;border-radius:4px;
+  font-family:ui-monospace,monospace;font-size:11.5px;color:var(--muted)}
+
+/* ---- BPMの帯 */
+.tempo{margin:22px 0 10px}
+.tempo-head{display:flex;justify-content:space-between;align-items:baseline;
+  font-size:13px;color:var(--muted);margin-bottom:8px}
+.tempo-val{font-family:Anton,sans-serif;font-size:20px;color:var(--ink);
+  letter-spacing:.03em}
+.ruler{position:relative;height:46px;border-radius:8px;overflow:hidden;
+  background:linear-gradient(90deg,var(--slow),var(--mid),var(--warm),var(--hot));
+  opacity:.9}
+.ruler .mask{position:absolute;top:0;bottom:0;background:rgba(22,18,31,.82)}
+.ruler .ticks{position:absolute;inset:0;display:flex}
+.ruler .tick{flex:1;border-right:1px solid rgba(22,18,31,.35);position:relative}
+.ruler .tick:last-child{border:none}
+.ruler .tick span{position:absolute;bottom:4px;left:5px;font-size:10.5px;
+  color:rgba(22,18,31,.8);font-weight:700}
+.sliders{position:relative;height:0}
+.sliders input{position:absolute;top:-40px;left:0;width:100%;height:32px;
+  -webkit-appearance:none;appearance:none;background:none;pointer-events:none}
+.sliders input::-webkit-slider-thumb{-webkit-appearance:none;pointer-events:auto;
+  width:16px;height:32px;border-radius:4px;background:var(--ink);
+  border:2px solid var(--bg);cursor:ew-resize}
+.sliders input::-moz-range-thumb{pointer-events:auto;width:16px;height:32px;
+  border-radius:4px;background:var(--ink);border:2px solid var(--bg);cursor:ew-resize}
+
+/* ---- タブと絞り込み */
+.tabs{display:flex;gap:2px;margin:22px 0 16px;border-bottom:1px solid var(--line)}
+.tabs button{padding:9px 15px;color:var(--muted);font-size:14px;
+  border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--hot)}
+.toolbar{display:flex;gap:16px;align-items:center;flex-wrap:wrap;
+  font-size:13px;color:var(--muted);margin-bottom:14px}
+.toolbar label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.toolbar select{background:var(--surface);color:var(--ink);border:1px solid var(--line);
+  border-radius:6px;padding:5px 8px;font:inherit;font-size:13px}
+
+/* ---- 結果 */
+.count{font-size:13px;color:var(--dim);margin:0 0 12px}
+.song{display:flex;gap:13px;padding:13px 0;border-top:1px solid var(--line)}
+.song:first-child{border-top:none}
+.art{width:52px;height:52px;border-radius:6px;background:var(--surface-2);
+  flex:none;object-fit:cover}
+.body{flex:1;min-width:0}
+.title{font-weight:700;line-height:1.4}
+.title .ver{font-weight:400;color:var(--muted);font-size:13.5px}
+.artist{color:var(--muted);font-size:13.5px;margin-top:1px}
+.meta{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:7px}
+.bpm{font-family:Anton,sans-serif;font-size:14px;letter-spacing:.04em;
+  padding:2px 9px;border-radius:20px;color:#16121f}
+.bpm small{font-family:"Zen Kaku Gothic New",sans-serif;font-size:9.5px;
+  font-weight:700;opacity:.7;margin-left:3px}
+.bpm.est{background:none!important;border:1px dashed currentColor}
+.prog{font-size:12.5px;padding:3px 10px;border-radius:20px;
+  background:var(--surface-2);border:1px solid var(--line);color:var(--ink)}
+.prog:hover{border-color:var(--focus)}
+.links{display:flex;gap:12px;margin-top:8px;font-size:12.5px}
+.links a,.links button{color:var(--muted);text-decoration:none;
+  border-bottom:1px solid var(--line);padding-bottom:1px}
+.links a:hover,.links button:hover{color:var(--ink);border-color:var(--focus)}
+.play{width:34px;height:34px;border-radius:50%;flex:none;
+  border:1px solid var(--line);background:var(--surface-2);
+  display:grid;place-items:center;font-size:12px;align-self:center}
+.play[data-on=true]{background:var(--hot);border-color:var(--hot);color:#16121f}
+.play:disabled{opacity:.3;cursor:default}
+
+/* ---- リミックス */
+.remixes{margin-top:10px;padding-left:13px;border-left:2px solid var(--line)}
+.remix{display:flex;align-items:center;gap:9px;padding:4px 0;font-size:13px}
+.remix .rname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.remix .rank{font-size:11px;color:var(--dim);flex:none}
+
+/* ---- プログラム詳細 */
+dialog{background:var(--surface);color:var(--ink);border:1px solid var(--line);
+  border-radius:12px;max-width:720px;width:calc(100% - 32px);padding:0}
+dialog::backdrop{background:rgba(11,8,16,.78)}
+.dlg-head{padding:20px 22px 14px;border-bottom:1px solid var(--line);
+  position:sticky;top:0;background:var(--surface)}
+.dlg-head h2{font-family:Anton,sans-serif;font-weight:400;font-size:25px;
+  margin:0 0 4px;letter-spacing:.02em}
+.dlg-body{padding:6px 22px 22px;max-height:66vh;overflow:auto}
+.desc{font-size:13.5px;color:var(--muted);margin:8px 0 0;white-space:pre-wrap}
+.trk{display:flex;gap:11px;align-items:baseline;padding:9px 0;
+  border-top:1px solid var(--line);font-size:14px}
+.trk .n{font-family:Anton,sans-serif;color:var(--dim);width:22px;flex:none;
+  text-align:right}
+.trk .act{font-size:11.5px;color:var(--dim)}
+.close{position:absolute;top:16px;right:18px;font-size:22px;color:var(--muted);
+  line-height:1}
+
+/* ---- 照合タブ */
+textarea{width:100%;min-height:170px;padding:13px;background:var(--surface);
+  color:var(--ink);border:1px solid var(--line);border-radius:9px;
+  font:inherit;font-size:13.5px;line-height:1.6;resize:vertical}
+.btn{background:var(--hot);color:#16121f;font-weight:700;padding:10px 20px;
+  border-radius:8px;font-size:14px}
+.btn.ghost{background:var(--surface-2);color:var(--ink);border:1px solid var(--line);
+  font-weight:400}
+.mrow{display:flex;gap:11px;padding:10px 0;border-top:1px solid var(--line);
+  font-size:14px;align-items:baseline}
+.flag{font-size:11px;padding:2px 8px;border-radius:20px;flex:none;font-weight:700}
+.f-exact{background:var(--mid);color:#16121f}
+.f-base{background:var(--warm);color:#16121f}
+.f-fuzzy{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.f-none{background:none;color:var(--dim);border:1px dashed var(--line)}
+.summary{background:var(--surface);border:1px solid var(--line);border-radius:9px;
+  padding:14px 16px;margin:16px 0;font-size:13.5px;line-height:1.9}
+
+.empty{color:var(--dim);padding:40px 0;text-align:center;font-size:14px}
+.error{background:#3a1f2b;border:1px solid #6b3049;border-radius:9px;
+  padding:16px;font-size:13.5px;color:#f3c9d6}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+@media (max-width:560px){
+  .wrap{padding:20px 14px 60px} h1{font-size:25px} #q{font-size:17px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>FEELCYCLE 選曲検索</h1>
+  <span class="stat" id="stat"></span>
+</header>
+
+<div id="fatal"></div>
+
+<div class="searchbar">
+  <input id="q" type="search" autocomplete="off" placeholder="曲名、アーティスト名、プログラム名、BPM">
+</div>
+<p class="hint">
+  BPMは <code>bpm128</code> <code>120-135</code> <code>&gt;140</code> <code>128±4</code> と書けます。
+  <code>house 120-135</code> のように言葉と組み合わせられます。
+</p>
+
+<div class="tempo">
+  <div class="tempo-head">
+    <span>テンポで絞り込む</span>
+    <span class="tempo-val" id="tempoVal">すべて</span>
+  </div>
+  <div class="ruler" id="ruler">
+    <div class="mask" id="maskL" style="left:0;width:0"></div>
+    <div class="mask" id="maskR" style="right:0;width:0"></div>
+    <div class="ticks" id="ticks"></div>
+  </div>
+  <div class="sliders">
+    <input type="range" id="bLo" min="80" max="180" step="1" value="80" aria-label="BPM下限">
+    <input type="range" id="bHi" min="80" max="180" step="1" value="180" aria-label="BPM上限">
+  </div>
+</div>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" aria-selected="true" data-tab="songs">曲を探す</button>
+  <button role="tab" aria-selected="false" data-tab="programs">プログラム</button>
+  <button role="tab" aria-selected="false" data-tab="match">プレイリスト照合</button>
+</nav>
+
+<section id="tab-songs">
+  <div class="toolbar">
+    <label>並び順
+      <select id="sort">
+        <option value="programs">収録プログラム数</option>
+        <option value="bpm">BPMが遅い順</option>
+        <option value="bpmDesc">BPMが速い順</option>
+        <option value="title">曲名</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="onlyPreview"> 試聴できる曲だけ</label>
+    <label><input type="checkbox" id="onlyRemix"> リミックスがある曲だけ</label>
+  </div>
+  <p class="count" id="count"></p>
+  <div id="songs"></div>
+</section>
+
+<section id="tab-programs" hidden>
+  <p class="count" id="pcount"></p>
+  <div id="programs"></div>
+</section>
+
+<section id="tab-match" hidden>
+  <p class="hint" style="margin-top:0">
+    Apple MusicやYouTubeの再生リストを貼り付けると、どのプログラムの曲か調べます。
+    リミックス版は原曲に読み替えて照合します。
+  </p>
+  <textarea id="paste" placeholder="1行に1曲。次のどれでも読み取れます。&#10;&#10;Titanium	David Guetta&#10;David Guetta - Titanium ft. Sia (Nicky Romero Remix)&#10;Levels - Skrillex Remix&#10;Aperture / Harry Styles"></textarea>
+  <div style="margin-top:12px;display:flex;gap:10px">
+    <button class="btn" id="runMatch">照合する</button>
+    <button class="btn ghost" id="clearMatch">消す</button>
+  </div>
+  <div id="matchOut"></div>
+</section>
+
+</div>
+
+<dialog id="dlg">
+  <div class="dlg-head">
+    <h2 id="dlgTitle"></h2>
+    <div class="stat" id="dlgMeta"></div>
+    <button class="close" id="dlgClose" aria-label="閉じる">×</button>
+  </div>
+  <div class="dlg-body">
+    <p class="desc" id="dlgDesc"></p>
+    <div id="dlgTracks"></div>
+    <div class="links" id="dlgLinks" style="margin-top:16px"></div>
+  </div>
+</dialog>
+
+<script src="./matcher.js"></script>
+<script>
+'use strict';
+
+let SONGS = [], PROGRAMS = [], PROG_BY_ID = new Map();
+const audio = new Audio();
+let playingBtn = null;
+
+// ------------------------------------------------------------ BPM の見せ方
+const BANDS = [
+  [0,   105, 'var(--slow)'],
+  [105, 120, 'var(--mid)'],
+  [120, 135, 'var(--warm)'],
+  [135, 150, '#e07a3c'],
+  [150, 999, 'var(--hot)'],
+];
+function bpmColor(b){
+  for (const [lo,hi,c] of BANDS) if (b>=lo && b<hi) return c;
+  return 'var(--muted)';
+}
+
+// ------------------------------------------------------------ クエリ解析
+/**
+ * 文字列からBPM条件を切り出し、残りをテキスト検索語として返す。
+ *   "house 120-135" -> {text:'house', lo:120, hi:135}
+ *   "bpm128"        -> {lo:126, hi:130}   （単一指定は±2の幅を持たせる）
+ *   ">140"          -> {lo:140, hi:Infinity}
+ *   "128±4"         -> {lo:124, hi:132}
+ */
+function parseQuery(raw){
+  let s = (raw||'').trim();
+  let lo = null, hi = null;
+  const take = (re, fn) => {
+    const m = s.match(re);
+    if (m){ fn(m); s = (s.slice(0,m.index)+' '+s.slice(m.index+m[0].length)).trim(); }
+  };
+  take(/(?:bpm\s*)?(\d{2,3})\s*(?:±|\+\/-|~\+)\s*(\d{1,2})/i,
+       m => { lo = +m[1]-(+m[2]); hi = +m[1]+(+m[2]); });
+  take(/(?:bpm\s*)?(\d{2,3})\s*(?:-|–|〜|~|to)\s*(\d{2,3})/i,
+       m => { lo = Math.min(+m[1],+m[2]); hi = Math.max(+m[1],+m[2]); });
+  take(/(>=|≧|<=|≦|>|<)\s*(?:bpm\s*)?(\d{2,3})/i, m => {
+    const v = +m[2];
+    if (m[1].startsWith('>') || m[1] === '≧'){ lo = v; hi = Infinity; }
+    else { lo = 0; hi = v; }
+  });
+  take(/\bbpm\s*(\d{2,3})\b/i, m => { lo = +m[1]-2; hi = +m[1]+2; });
+  take(/\b(\d{2,3})\s*bpm\b/i, m => { lo = +m[1]-2; hi = +m[1]+2; });
+  // 数字だけを打った場合はテンポ指定とみなす（85〜180のときのみ）
+  if (lo == null && /^\d{2,3}$/.test(s) && +s >= 85 && +s <= 180){
+    lo = +s - 2; hi = +s + 2; s = '';
+  }
+  return { text: s.replace(/\s+/g,' ').trim(), lo, hi };
+}
+
+// 検索用の正規化。matcher.js の norm と同じ規則。
+const nrm = s => (typeof norm === 'function') ? norm(s)
+  : (s||'').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu,' ').replace(/\s+/g,' ').trim();
+
+// ------------------------------------------------------------ 読み込み
+async function load(){
+  try{
+    const [a,b] = await Promise.all([
+      fetch('./songs.json').then(r=>{if(!r.ok)throw new Error('songs.json '+r.status);return r.json()}),
+      fetch('./programs.json').then(r=>{if(!r.ok)throw new Error('programs.json '+r.status);return r.json()}),
+    ]);
+    SONGS = a; PROGRAMS = b;
+    PROG_BY_ID = new Map(PROGRAMS.map(p=>[p.id,p]));
+    for (const s of SONGS){ s._t = nrm(s.title); s._a = nrm(s.artist);
+      s._p = (s.programs||[]).map(p=>nrm(p.name)).join(' '); }
+    const withBpm = SONGS.filter(s=>s.bpm).length;
+    document.getElementById('stat').textContent =
+      `${PROGRAMS.length} プログラム / ${SONGS.length} 曲（BPM判明 ${withBpm}）`;
+    render(); renderPrograms();
+  }catch(e){
+    document.getElementById('fatal').innerHTML =
+      `<div class="error"><b>データを読み込めませんでした。</b><br>${e.message}<br><br>
+       <code>songs.json</code> と <code>programs.json</code> をこのファイルと同じ場所に置き、
+       ローカルで開く場合は <code>python -m http.server</code> 経由で表示してください。
+       file:// で直接開くとブラウザがJSONの読み込みを拒否します。</div>`;
+  }
+}
+
+// ------------------------------------------------------------ 検索
+function currentRange(){
+  const lo = +document.getElementById('bLo').value;
+  const hi = +document.getElementById('bHi').value;
+  return [Math.min(lo,hi), Math.max(lo,hi)];
+}
+
+function search(){
+  const {text, lo, hi} = parseQuery(document.getElementById('q').value);
+  const [sLo, sHi] = currentRange();
+  const useSlider = !(sLo<=80 && sHi>=180);
+  const RLO = lo!=null ? lo : (useSlider ? sLo : null);
+  const RHI = hi!=null ? hi : (useSlider ? sHi : null);
+
+  const terms = text ? nrm(text).split(' ').filter(Boolean) : [];
+  const onlyPrev = document.getElementById('onlyPreview').checked;
+  const onlyRmx  = document.getElementById('onlyRemix').checked;
+
+  let out = SONGS.filter(s=>{
+    if (RLO!=null){
+      if (!s.bpm) return false;
+      if (s.bpm < RLO || s.bpm > RHI) return false;
+    }
+    if (onlyPrev && !s.previewUrl) return false;
+    if (onlyRmx && !(s.remixes||[]).length) return false;
+    if (!terms.length) return true;
+    const hay = s._t+' '+s._a+' '+s._p;
+    return terms.every(t=>hay.includes(t));
+  });
+
+  const sort = document.getElementById('sort').value;
+  const cmp = {
+    programs:(a,b)=>(b.programs?.length||0)-(a.programs?.length||0)
+                    || a.title.localeCompare(b.title),
+    bpm:(a,b)=>(a.bpm||9999)-(b.bpm||9999),
+    bpmDesc:(a,b)=>(b.bpm||0)-(a.bpm||0),
+    title:(a,b)=>a.title.localeCompare(b.title),
+  }[sort];
+  out.sort(cmp);
+  return {out, RLO, RHI, hasQuery: !!(terms.length || RLO!=null)};
+}
+
+function render(){
+  const {out, RLO, RHI, hasQuery} = search();
+  const box = document.getElementById('songs');
+  const label = RLO==null ? '' :
+    `　BPM ${RLO}${RHI===Infinity?'以上':'〜'+RHI}`;
+  document.getElementById('count').textContent =
+    hasQuery ? `${out.length} 曲${label}` : `${SONGS.length} 曲すべて`;
+
+  if (!out.length){
+    box.innerHTML = `<p class="empty">条件に合う曲がありません。<br>
+      BPMの範囲を広げるか、語を減らしてみてください。</p>`;
+    return;
+  }
+  box.innerHTML = out.slice(0,300).map(songHTML).join('');
+  if (out.length>300){
+    box.insertAdjacentHTML('beforeend',
+      `<p class="empty">ほか ${out.length-300} 曲。語を足すと絞り込めます。</p>`);
+  }
+}
+
+const esc = s => (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function bpmChip(s){
+  if (!s.bpm) return '<span class="prog" style="color:var(--dim)">BPM不明</span>';
+  const est = s.bpmSource === 'estimated';
+  const c = bpmColor(s.bpm);
+  return `<span class="bpm${est?' est':''}" style="${est?`color:${c}`:`background:${c}`}">
+    ${s.bpm}<small>${est?'推定':'BPM'}</small></span>`;
+}
+
+function songHTML(s, i){
+  const idx = SONGS.indexOf(s);
+  const progs = (s.programs||[]).map(p=>
+    `<button class="prog" data-prog="${esc(p.id)}">${esc(p.name)}${
+      p.no?` <span style="color:var(--dim)">${p.no}曲目</span>`:''}</button>`).join('');
+  const rmx = (s.remixes||[]).length ? `
+    <div class="links"><button data-rmx="${idx}">リミックス ${s.remixes.length} 件を見る</button></div>
+    <div class="remixes" id="rmx-${idx}" hidden>${s.remixes.map(r=>`
+      <div class="remix">
+        <button class="play" data-src="${esc(r.previewUrl)}" ${r.previewUrl?'':'disabled'}>▶</button>
+        <span class="rname">${esc(r.version||r.title)}<span style="color:var(--muted)"> / ${esc(r.artist)}</span></span>
+        <span class="rank">人気 ${(r.rank||0).toLocaleString()}</span>
+        ${r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener">開く</a>`:''}
+      </div>`).join('')}</div>` : '';
+
+  return `<div class="song">
+    ${s.artwork?`<img class="art" src="${esc(s.artwork)}" alt="" loading="lazy">`
+               :'<div class="art"></div>'}
+    <button class="play" data-src="${esc(s.previewUrl)}" ${s.previewUrl?'':'disabled'}
+            aria-label="試聴">▶</button>
+    <div class="body">
+      <div class="title">${esc(s.title)}${s.isRemix?' <span class="ver">リミックス版</span>':''}</div>
+      <div class="artist">${esc(s.artist)}</div>
+      <div class="meta">${bpmChip(s)}${progs}</div>
+      <div class="links">
+        ${s.appleUrl?`<a href="${esc(s.appleUrl)}" target="_blank" rel="noopener">Apple Music</a>`:''}
+        ${s.ytUrl?`<a href="${esc(s.ytUrl)}" target="_blank" rel="noopener">YouTube</a>`:''}
+      </div>
+      ${rmx}
+    </div>
+  </div>`;
+}
+
+// ------------------------------------------------------------ プログラム一覧
+function renderPrograms(){
+  const {text} = parseQuery(document.getElementById('q').value);
+  const terms = text ? nrm(text).split(' ').filter(Boolean) : [];
+  const [sLo,sHi] = currentRange();
+  const useSlider = !(sLo<=80 && sHi>=180);
+
+  const out = PROGRAMS.filter(p=>{
+    if (useSlider){
+      if (!p.bpmMedian) return false;
+      if (p.bpmMedian<sLo || p.bpmMedian>sHi) return false;
+    }
+    if (!terms.length) return true;
+    const hay = nrm(p.name+' '+(p.aliases||[]).join(' '));
+    return terms.every(t=>hay.includes(t));
+  }).sort((a,b)=>a.name.localeCompare(b.name));
+
+  document.getElementById('pcount').textContent = `${out.length} プログラム`;
+  document.getElementById('programs').innerHTML = out.map(p=>`
+    <div class="song">
+      <div class="body">
+        <div class="title"><button class="prog" data-prog="${esc(p.id)}"
+          style="font-family:Anton,sans-serif;font-size:17px;letter-spacing:.03em">${esc(p.name)}</button></div>
+        <div class="meta">
+          ${p.bpmMedian?`<span class="bpm" style="background:${bpmColor(p.bpmMedian)}">${p.bpmMedian}<small>中央値</small></span>`:''}
+          <span class="prog">${p.trackCount} 曲</span>
+          ${p.bpmRange?`<span class="prog">BPM ${p.bpmRange[0]}〜${p.bpmRange[1]}</span>`:''}
+        </div>
+      </div>
+    </div>`).join('') || '<p class="empty">該当するプログラムがありません。</p>';
+}
+
+// ------------------------------------------------------------ プログラム詳細
+function openProgram(id){
+  const p = PROG_BY_ID.get(id);
+  if (!p) return;
+  document.getElementById('dlgTitle').textContent = p.name;
+  document.getElementById('dlgMeta').textContent =
+    `${p.trackCount} 曲` + (p.bpmRange?`　BPM ${p.bpmRange[0]}〜${p.bpmRange[1]}（中央値 ${p.bpmMedian}）`:'');
+  document.getElementById('dlgDesc').textContent = p.description || '';
+  document.getElementById('dlgTracks').innerHTML = (p.tracks||[]).map(t=>`
+    <div class="trk">
+      <span class="n">${t.stretch?'▽':t.no}</span>
+      <button class="play" data-src="${esc(t.previewUrl)}" ${t.previewUrl?'':'disabled'}>▶</button>
+      <span style="flex:1;min-width:0">
+        ${esc(t.title)}<span style="color:var(--muted)"> / ${esc(t.artist)}</span>
+        ${t.actions?`<div class="act">${esc(t.position)}　${esc(t.actions)}</div>`:''}
+      </span>
+      ${t.bpm?`<span class="bpm${t.bpmSource==='estimated'?' est':''}"
+        style="${t.bpmSource==='estimated'?`color:${bpmColor(t.bpm)}`:`background:${bpmColor(t.bpm)}`}">${t.bpm}</span>`:''}
+    </div>`).join('');
+  document.getElementById('dlgLinks').innerHTML =
+    (p.playlistUrl?`<a href="${esc(p.playlistUrl)}" target="_blank" rel="noopener">Apple Musicで聴く</a>`:'')+
+    (p.reportUrl?`<a href="${esc(p.reportUrl)}" target="_blank" rel="noopener">FEELCYCLISTのレポート</a>`:'');
+  document.getElementById('dlg').showModal();
+}
+
+// ------------------------------------------------------------ 試聴
+function togglePlay(btn){
+  const src = btn.dataset.src;
+  if (!src) return;
+  if (playingBtn === btn){ audio.pause(); btn.dataset.on='false'; btn.textContent='▶';
+    playingBtn=null; return; }
+  if (playingBtn){ playingBtn.dataset.on='false'; playingBtn.textContent='▶'; }
+  audio.src = src; audio.play().catch(()=>{});
+  btn.dataset.on='true'; btn.textContent='■'; playingBtn = btn;
+}
+audio.addEventListener('ended',()=>{
+  if (playingBtn){ playingBtn.dataset.on='false'; playingBtn.textContent='▶'; playingBtn=null; }
+});
+
+// ------------------------------------------------------------ 照合タブ
+function runMatch(){
+  const text = document.getElementById('paste').value;
+  const out = document.getElementById('matchOut');
+  if (!text.trim()){ out.innerHTML = '<p class="empty">プレイリストを貼り付けてください。</p>'; return; }
+  if (typeof matchPlaylist !== 'function'){
+    out.innerHTML = '<div class="error">matcher.js が読み込まれていません。同じ場所に置いてください。</div>';
+    return;
+  }
+  const r = matchPlaylist(text, SONGS);
+  const s = r.summary;
+  const rows = r.results.map(x=>{
+    const cls = {exact:'f-exact',base:'f-base',fuzzy:'f-fuzzy',none:'f-none'}[x.match];
+    const lab = {exact:'一致',base:'原曲',fuzzy:'たぶん',none:'該当なし'}[x.match];
+    const progs = (x.programs||[]).map(p=>
+      `<button class="prog" data-prog="${esc(p.id)}">${esc(p.name)}</button>`).join(' ');
+    return `<div class="mrow">
+      <span class="flag ${cls}">${lab}</span>
+      <span style="flex:1;min-width:0">
+        ${esc(x.input.title)}<span style="color:var(--muted)"> / ${esc(x.input.artist)}</span>
+        ${x.song && x.match!=='exact' ? `<div class="act" style="color:var(--muted)">→ ${esc(x.song.title)}</div>`:''}
+        <div class="meta">${progs}</div>
+      </span></div>`;
+  }).join('');
+
+  out.innerHTML = `<div class="summary">
+      ${s.total} 曲のうち <b>${s.matched} 曲</b>がFEELCYCLEで使われています。<br>
+      うち ${s.viaRemix} 曲はリミックス版として登録されていたものです。
+      ${s.fuzzy?`${s.fuzzy} 曲は表記ゆれで推定した候補なので確認してください。`:''}
+      ${s.none?`<br>${s.none} 曲は見つかりませんでした。`:''}
+      ${s.programs.length?`<br><br>該当プログラム ${s.programs.length} 本: ${esc(s.programs.join('、'))}`:''}
+    </div>${rows}`;
+}
+
+// ------------------------------------------------------------ BPMの帯の描画
+function paintRuler(){
+  const [lo,hi] = currentRange();
+  const pct = v => (v-80)/100*100;
+  document.getElementById('maskL').style.width = Math.max(0,pct(lo))+'%';
+  document.getElementById('maskR').style.width = Math.max(0,100-pct(hi))+'%';
+  document.getElementById('tempoVal').textContent =
+    (lo<=80 && hi>=180) ? 'すべて' : `${lo} 〜 ${hi}`;
+}
+document.getElementById('ticks').innerHTML =
+  [80,100,120,140,160].map(v=>`<div class="tick"><span>${v}</span></div>`).join('');
+
+// ------------------------------------------------------------ イベント
+let timer;
+document.getElementById('q').addEventListener('input',()=>{
+  clearTimeout(timer); timer = setTimeout(()=>{render(); renderPrograms();},140);
+});
+for (const id of ['bLo','bHi']){
+  document.getElementById(id).addEventListener('input',()=>{
+    paintRuler(); clearTimeout(timer);
+    timer = setTimeout(()=>{render(); renderPrograms();},120);
+  });
+}
+for (const id of ['sort','onlyPreview','onlyRemix']){
+  document.getElementById(id).addEventListener('change',render);
+}
+document.querySelectorAll('.tabs button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected', x===b));
+    for (const t of ['songs','programs','match'])
+      document.getElementById('tab-'+t).hidden = (t !== b.dataset.tab);
+  });
+});
+document.addEventListener('click',e=>{
+  const play = e.target.closest('.play');
+  if (play){ togglePlay(play); return; }
+  const prog = e.target.closest('[data-prog]');
+  if (prog){ openProgram(prog.dataset.prog); return; }
+  const rmx = e.target.closest('[data-rmx]');
+  if (rmx){
+    const el = document.getElementById('rmx-'+rmx.dataset.rmx);
+    el.hidden = !el.hidden;
+    rmx.textContent = el.hidden ? rmx.textContent.replace('を隠す','を見る')
+                                : rmx.textContent.replace('を見る','を隠す');
+  }
+});
+document.getElementById('dlgClose').addEventListener('click',()=>document.getElementById('dlg').close());
+document.getElementById('runMatch').addEventListener('click',runMatch);
+document.getElementById('clearMatch').addEventListener('click',()=>{
+  document.getElementById('paste').value=''; document.getElementById('matchOut').innerHTML='';
+});
+
+paintRuler();
+load();
+</script>
+</body>
+</html>
