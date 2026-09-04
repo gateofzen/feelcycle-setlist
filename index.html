@@ -132,6 +132,10 @@ dialog::backdrop{background:rgba(11,8,16,.78)}
 .trk .n{font-family:Anton,sans-serif;color:var(--dim);width:22px;flex:none;
   text-align:right}
 .trk .act{font-size:11.5px;color:var(--dim)}
+.trk-link{flex:1;min-width:0;text-align:left;font:inherit;padding:2px 4px;
+  border-radius:5px;border:1px solid transparent}
+.trk-link:hover{background:var(--surface-2);border-color:var(--line)}
+.trk-link:hover .act{color:var(--muted)}
 .close{position:absolute;top:16px;right:18px;font-size:22px;color:var(--muted);
   line-height:1}
 
@@ -509,10 +513,11 @@ function openProgram(id){
     <div class="trk">
       <span class="n">${t.stretch?'▽':t.no}</span>
       <button class="play" data-src="${esc(t.previewUrl)}" ${t.previewUrl?'':'disabled'}>▶</button>
-      <span style="flex:1;min-width:0">
+      <button class="trk-link" data-song="${esc(t.title)}"
+              title="この曲を収録する他のプログラムを見る">
         ${esc(t.title)}<span style="color:var(--muted)"> / ${esc(t.artist)}</span>
         ${t.actions?`<div class="act">${esc(t.position)}　${esc(t.actions)}</div>`:''}
-      </span>
+      </button>
       ${t.bpm?`<span class="bpm${t.bpmSource==='estimated'?' est':''}"
         style="${t.bpmSource==='estimated'?`color:${bpmColor(t.bpm)}`:`background:${bpmColor(t.bpm)}`}">${t.bpm}</span>`:''}
     </div>`).join('');
@@ -520,6 +525,26 @@ function openProgram(id){
     (p.playlistUrl?`<a href="${esc(p.playlistUrl)}" target="_blank" rel="noopener">Apple Musicで聴く</a>`:'')+
     (p.reportUrl?`<a href="${esc(p.reportUrl)}" target="_blank" rel="noopener">FEELCYCLISTのレポート</a>`:'');
   document.getElementById('dlg').showModal();
+}
+
+/** セットリストの曲から、その曲を収録する全プログラムの表示へ移る */
+function showSong(title){
+  document.getElementById('dlg').close();
+  // テンポ絞り込みが効いたままだとヒットしないことがあるので解除する
+  document.getElementById('bLo').value = 60;
+  document.getElementById('bHi').value = 200;
+  paintRuler();
+  document.getElementById('onlyPreview').checked = false;
+  document.getElementById('onlyRemix').checked = false;
+  document.getElementById('q').value = title;
+  document.querySelectorAll('.tabs button').forEach(x=>
+    x.setAttribute('aria-selected', x.dataset.tab === 'songs'));
+  for (const t of ['songs','programs','match'])
+    document.getElementById('tab-'+t).hidden = (t !== 'songs');
+  render(); renderPrograms();
+  document.getElementById('q').scrollIntoView({block:'start',
+    behavior: matchMedia('(prefers-reduced-motion:reduce)').matches
+      ? 'auto' : 'smooth'});
 }
 
 // ------------------------------------------------------------ 試聴
@@ -608,6 +633,8 @@ document.addEventListener('click',e=>{
   if (play){ togglePlay(play); return; }
   const prog = e.target.closest('[data-prog]');
   if (prog){ openProgram(prog.dataset.prog); return; }
+  const sng = e.target.closest('[data-song]');
+  if (sng){ showSong(sng.dataset.song); return; }
   const rmx = e.target.closest('[data-rmx]');
   if (rmx){
     const el = document.getElementById('rmx-'+rmx.dataset.rmx);

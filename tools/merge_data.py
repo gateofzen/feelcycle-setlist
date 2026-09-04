@@ -377,24 +377,34 @@ def main():
         elif rep is None:
             unmatched.append(f"[Apple Musicのみ] {a['name']}")
 
-        tracks, seen = [], set()
+        tracks, seen, seen_ids = [], set(), set()
 
         def add(title, artist, apple_id, no, ex, src):
-            key = norm(title) + "|" + norm(artist)
-            if key in seen or not title:
+            # 先に表示名を確定させてから重複判定する。
+            # 順序を逆にすると、和名/英名の違いで同じ曲が二重に並ぶ。
+            meta = have.get(apple_id, {}) if apple_id else {}
+            title = meta.get("title") or title
+            artist = meta.get("artist") or artist
+            if not title:
+                return
+            if apple_id and apple_id in seen_ids:
+                return
+            # 1プログラム内で同名異曲はまず無いので、曲名だけで judge する
+            key = norm(title)
+            if key in seen:
                 return
             seen.add(key)
-            meta = have.get(apple_id, {}) if apple_id else {}
+            if apple_id:
+                seen_ids.add(apple_id)
             tracks.append({
                 "no": no,
-                "title": meta.get("title") or title,
-                "artist": meta.get("artist") or artist,
+                "title": title,
+                "artist": artist,
                 "appleId": apple_id,
                 "appleUrl": meta.get("appleUrl", ""),
                 "previewUrl": meta.get("previewUrl", ""),
                 "artwork": meta.get("artwork", ""),
-                "ytUrl": yt(meta.get("title") or title,
-                            meta.get("artist") or artist),
+                "ytUrl": yt(title, artist),
                 "bpm": int(ex["bpm"]) if ex.get("bpm") else None,
                 "position": ex.get("position", ""),
                 "actions": ex.get("actions", ""),
