@@ -158,17 +158,29 @@ def main():
             sys.exit(f"'{args.test}' を含む曲が見つかりません")
 
     total, matched, no_apple, dropped = 0, 0, 0, 0
+    generic_titles = 0
     for n, k in enumerate(keys, 1):
         s = songs.get(k)
         if not s:
             continue
         sb = base_title(s["title"])
         pool = search(f"{s['title']} {s['artist']}", cache)
-        # Apple側の候補。原曲アーティスト名義のものを本命とし、
-        # 別名義でも曲名が一致するものは候補に残す（網羅性優先）。
+        # 曲名の一般性を測る。"Somebody To Love" のように多数のアーティストが
+        # 同名曲を持つ場合、曲名一致だけでは同じ曲だと言えない。
+        same_named = [c for c in pool if base_title(c["name"]) == sb]
+        distinct = {norm(c.get("artist", "")) for c in same_named
+                    if c.get("artist")}
+        generic = len(distinct) >= 3
+
         pool_strict = [c for c in pool
                        if same_artist(c.get("artist", ""), s["artist"])]
-        pool = pool_strict or [c for c in pool if base_title(c["name"]) == sb]
+        if generic:
+            # ありふれた曲名では原曲アーティスト名義のものしか信用しない
+            pool = pool_strict
+            generic_titles += 1
+        else:
+            # 珍しい曲名なら別名義でも曲名一致で拾う（網羅性優先）
+            pool = pool_strict or same_named
 
         kept, seen_ver = [], set()
         for r in table[k]:
@@ -179,7 +191,10 @@ def main():
             by_artist = same_artist(r.get("artist", ""), s["artist"])
             in_title = bool(artist_tokens(s["artist"])
                             & artist_tokens(r.get("title", "")))
-            if not (by_artist or hit or in_title):
+            # ありふれた曲名では「曲名に原曲アーティスト名がある」だけでは
+            # 根拠が弱いので採らない
+            ok = (by_artist or hit) if generic else (by_artist or hit or in_title)
+            if not ok:
                 dropped += 1
                 continue
 
@@ -249,6 +264,7 @@ def main():
     print(f"  YouTube検索のみ     {no_apple} 件")
     print(f"リミックスが無くなった曲 {empty} 件")
     print(f"リミックスを持つ曲 {have} 曲")
+    print(f"ありふれた曲名として厳格に判定した曲 {generic_titles} 件")
 
 
 if __name__ == "__main__":
