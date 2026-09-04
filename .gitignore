@@ -8,3 +8,6 @@ unmatched.txt
 warnings.txt
 __pycache__/
 .DS_Store
+
+# tools配下の生成物（ルート直下のものを使う）
+tools/*.json
