@@ -1,5 +1,5 @@
 /* FEELCYCLE 選曲検索 — オフライン対応 */
-const VERSION = 'v2';
+const VERSION = 'v5';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 

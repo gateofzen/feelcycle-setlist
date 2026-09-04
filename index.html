@@ -281,6 +281,12 @@ textarea{width:100%;min-height:170px;padding:13px;background:var(--surface);
 'use strict';
 
 let SONGS = [], PROGRAMS = [], PROG_BY_ID = new Map();
+// プログラムのセットリストから曲の英語表記を引くための対応表
+const EN = new Map();
+const disp = t => {
+  const s = EN.get(nrm(t.title) + '|' + nrm(t.artist));
+  return s ? [s._dt, s._da] : [t.title, t.artist];
+};
 const audio = new Audio();
 let playingBtn = null;
 
@@ -343,9 +349,18 @@ async function load(){
     ]);
     SONGS = a; PROGRAMS = b;
     loadRemixes();          // 重いので初期表示を待たせない
+    loadSoundcloud();
     PROG_BY_ID = new Map(PROGRAMS.map(p=>[p.id,p]));
-    for (const s of SONGS){ s._t = nrm(s.title); s._a = nrm(s.artist);
-      s._p = (s.programs||[]).map(p=>nrm(p.name)).join(' '); }
+    // 表示は英語表記を優先し、検索は日英どちらでも当たるようにする
+    EN.clear();
+    for (const s of SONGS){
+      s._dt = s.titleEn || s.title;
+      s._da = s.artistEn || s.artist;
+      s._t = nrm(s.title) + ' ' + nrm(s.titleEn||'');
+      s._a = nrm(s.artist) + ' ' + nrm(s.artistEn||'');
+      s._p = (s.programs||[]).map(p=>nrm(p.name)).join(' ');
+      EN.set(nrm(s.title) + '|' + nrm(s.artist), s);
+    }
     const withBpm = SONGS.filter(s=>s.bpm).length;
     document.getElementById('stat').textContent =
       `${PROGRAMS.length} プログラム / ${SONGS.length} 曲（BPM判明 ${withBpm}）`;
@@ -413,10 +428,10 @@ function search(){
   const sort = document.getElementById('sort').value;
   const cmp = {
     programs:(a,b)=>(b.programs?.length||0)-(a.programs?.length||0)
-                    || a.title.localeCompare(b.title),
+                    || (a._dt||a.title).localeCompare(b._dt||b.title),
     bpm:(a,b)=>(a.bpm||9999)-(b.bpm||9999),
     bpmDesc:(a,b)=>(b.bpm||0)-(a.bpm||0),
-    title:(a,b)=>a.title.localeCompare(b.title),
+    title:(a,b)=>(a._dt||a.title).localeCompare(b._dt||b.title),
   }[sort];
   out.sort(cmp);
   return {out, RLO, RHI, hasQuery: !!(terms.length || RLO!=null)};
@@ -444,6 +459,27 @@ function render(){
 
 const esc = s => (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
+/**
+ * SoundCloud のリミックス検索URL。APIキー不要。
+ * SoundCloud は日本語表記では検索できないため、英語表記を優先して使う
+ * （english_names.py が付与する titleEn / artistEn）。
+ */
+function scUrl(s){
+  const t = s.titleEn || s.title || '';
+  const a = s.artistEn || s.artist || '';
+  return 'https://soundcloud.com/search?q='
+    + encodeURIComponent(`${t} ${a} remix`.trim());
+}
+
+/** 手動登録したお気に入りリミックス（soundcloud.json）。無くても動く。 */
+let SC_FAV = {};
+async function loadSoundcloud(){
+  try{
+    SC_FAV = await fetch('./soundcloud.json').then(r=>r.ok?r.json():{});
+    if (Object.keys(SC_FAV).length) render();
+  }catch(e){ SC_FAV = {}; }
+}
+
 function bpmChip(s){
   if (!s.bpm) return '<span class="prog" style="color:var(--dim)">BPM不明</span>';
   const est = s.bpmSource === 'estimated';
@@ -457,6 +493,20 @@ function songHTML(s, i){
   const progs = (s.programs||[]).map(p=>
     `<button class="prog" data-prog="${esc(p.id)}">${esc(p.name)}${
       p.no?` <span style="color:var(--dim)">${p.no}曲目</span>`:''}</button>`).join('');
+  const fav = SC_FAV[s.key] || [];
+  const favHtml = fav.length ? `
+    <div class="remixes" style="border-left-color:var(--hot)">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:4px">
+        お気に入り（SoundCloud）</div>
+      ${fav.map((f,i)=>`
+      <div class="remix">
+        <span class="rname">${esc(f.label||f.url)}</span>
+        <button data-sc="${esc(f.url)}" data-scid="${idx}-${i}">再生</button>
+        <a href="${esc(f.url)}" target="_blank" rel="noopener">開く</a>
+      </div>
+      <div id="sc-${idx}-${i}" hidden></div>`).join('')}
+    </div>` : '';
+
   const n = (s.remixes||[]).length;
   const rmx = (!n && s.remixCount) ? `
     <div class="links"><span style="color:var(--dim)">リミックス ${s.remixCount} 件を読み込み中…</span></div>`
@@ -477,17 +527,18 @@ function songHTML(s, i){
     <button class="play" data-src="${esc(s.previewUrl)}" ${s.previewUrl?'':'disabled'}
             aria-label="試聴">▶</button>
     <div class="body">
-      <div class="title">${esc(s.title)}${s.isRemix?' <span class="ver">リミックス版</span>':''}</div>
-      <div class="artist">${s.artist
-        ? `<button class="art-link" data-artist="${esc(s.artist)}"
-             title="このアーティストの曲を一覧する">${esc(s.artist)}</button>`
+      <div class="title">${esc(s._dt||s.title)}${s.isRemix?' <span class="ver">リミックス版</span>':''}</div>
+      <div class="artist">${(s._da||s.artist)
+        ? `<button class="art-link" data-artist="${esc(s._da||s.artist)}"
+             title="このアーティストの曲を一覧する">${esc(s._da||s.artist)}</button>`
         : ''}</div>
       <div class="meta">${bpmChip(s)}${progs}</div>
       <div class="links">
         ${s.appleUrl?`<a href="${esc(s.appleUrl)}" target="_blank" rel="noopener">Apple Music</a>`:''}
         ${s.ytUrl?`<a href="${esc(s.ytUrl)}" target="_blank" rel="noopener">YouTube</a>`:''}
+        <a href="${esc(scUrl(s))}" target="_blank" rel="noopener">SoundCloud</a>
       </div>
-      ${rmx}
+      ${favHtml}${rmx}
     </div>
   </div>`;
 }
@@ -532,20 +583,23 @@ function openProgram(id){
   document.getElementById('dlgMeta').textContent =
     `${p.trackCount} 曲` + (p.bpmRange?`　BPM ${p.bpmRange[0]}〜${p.bpmRange[1]}（中央値 ${p.bpmMedian}）`:'');
   document.getElementById('dlgDesc').textContent = p.description || '';
-  document.getElementById('dlgTracks').innerHTML = (p.tracks||[]).map(t=>`
+  document.getElementById('dlgTracks').innerHTML = (p.tracks||[]).map(t=>{
+    const [dt, da] = disp(t);
+    return `
     <div class="trk">
       <span class="n">${t.stretch?'▽':t.no}</span>
       <button class="play" data-src="${esc(t.previewUrl)}" ${t.previewUrl?'':'disabled'}>▶</button>
-      <button class="trk-link" data-song="${esc(t.title)}"
+      <button class="trk-link" data-song="${esc(dt)}"
               title="この曲を収録する他のプログラムを見る">
-        ${esc(t.title)}<span style="color:var(--muted)"> / ${esc(t.artist)}</span>
+        ${esc(dt)}<span style="color:var(--muted)"> / ${esc(da)}</span>
         ${t.actions?`<div class="act">${esc(t.position)}　${esc(t.actions)}</div>`:''}
       </button>
-      <button class="art-link mini" data-artist="${esc(t.artist)}"
+      <button class="art-link mini" data-artist="${esc(da)}"
               title="このアーティストの曲を一覧する">♦</button>
       ${t.bpm?`<span class="bpm${t.bpmSource==='estimated'?' est':''}"
         style="${t.bpmSource==='estimated'?`color:${bpmColor(t.bpm)}`:`background:${bpmColor(t.bpm)}`}">${t.bpm}</span>`:''}
-    </div>`).join('');
+    </div>`;
+  }).join('');
   document.getElementById('dlgLinks').innerHTML =
     (p.playlistUrl?`<a href="${esc(p.playlistUrl)}" target="_blank" rel="noopener">Apple Musicで聴く</a>`:'')+
     (p.reportUrl?`<a href="${esc(p.reportUrl)}" target="_blank" rel="noopener">FEELCYCLISTのレポート</a>`:'');
@@ -606,7 +660,7 @@ function runMatch(){
       <span class="flag ${cls}">${lab}</span>
       <span style="flex:1;min-width:0">
         ${esc(x.input.title)}<span style="color:var(--muted)"> / ${esc(x.input.artist)}</span>
-        ${x.song && x.match!=='exact' ? `<div class="act" style="color:var(--muted)">→ ${esc(x.song.title)}</div>`:''}
+        ${x.song && x.match!=='exact' ? `<div class="act" style="color:var(--muted)">→ ${esc(x.song._dt||x.song.title)}</div>`:''}
         <div class="meta">${progs}</div>
       </span></div>`;
   }).join('');
@@ -658,6 +712,20 @@ document.addEventListener('click',e=>{
   if (play){ togglePlay(play); return; }
   const prog = e.target.closest('[data-prog]');
   if (prog){ openProgram(prog.dataset.prog); return; }
+  const sc = e.target.closest('[data-sc]');
+  if (sc){
+    const box = document.getElementById('sc-'+sc.dataset.scid);
+    if (box.hidden){
+      if (!box.innerHTML){
+        box.innerHTML = `<iframe width="100%" height="120" frameborder="0"
+          allow="autoplay" loading="lazy"
+          src="https://w.soundcloud.com/player/?url=${encodeURIComponent(sc.dataset.sc)}
+&color=%23e0426b&auto_play=false&show_comments=false&show_teaser=false"></iframe>`;
+      }
+      box.hidden = false; sc.textContent = '閉じる';
+    } else { box.hidden = true; sc.textContent = '再生'; }
+    return;
+  }
   const art = e.target.closest('[data-artist]');
   if (art){ jumpTo(art.dataset.artist); return; }
   const sng = e.target.closest('[data-song]');
