@@ -48,6 +48,24 @@ RE_ORIGINAL = re.compile(
     r"sped\s*up|slowed)\b", re.I)
 RE_PAREN = re.compile(r"[\(\[]([^\)\]]*)[\)\]]")
 
+# フィットネス用の再演カバーなど、リミックスではないものを弾く
+JUNK_ARTIST = re.compile(
+    r"(workout|fitness|superfitness|power music|gym|cardio|spinning|running|"
+    r"training|aerobic|treadmill|karaoke|tribute|cover band|the covers|"
+    r"hits remixed|remix kingz|mixx party|party hits|dubstep hitz|"
+    r"nightcore|slow mage|sped up|slowed|8-?bit|piano tribute|"
+    r"made famous|in the style|instrumental version|bee entertainment)", re.I)
+JUNK_TITLE = re.compile(
+    r"(workout|\d{2,3}\s*bpm|karaoke|tribute|nightcore|slowed|sped\s*up|"
+    r"in the style of|made famous by|8-?bit|music box|lullaby|"
+    r"instrumental|backing track|reverb)", re.I)
+
+
+def is_junk(title, version, artist):
+    return bool(JUNK_ARTIST.search(artist or "")
+                or JUNK_TITLE.search(title or "")
+                or JUNK_TITLE.search(version or ""))
+
 
 def norm(s):
     s = unicodedata.normalize("NFKC", s or "").lower()
@@ -113,6 +131,8 @@ def find_remixes(title, artist, verbose=False):
             if base_title(dt) != bt:
                 continue
             if not looks_remix(dt, ver):
+                continue
+            if is_junk(dt, ver, (d.get("artist") or {}).get("name", "")):
                 continue
             vname = extract_version(dt, ver)
             key = norm(vname) or norm(dt)

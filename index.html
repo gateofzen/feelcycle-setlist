@@ -191,8 +191,8 @@ textarea{width:100%;min-height:170px;padding:13px;background:var(--surface);
     <div class="ticks" id="ticks"></div>
   </div>
   <div class="sliders">
-    <input type="range" id="bLo" min="80" max="180" step="1" value="80" aria-label="BPM下限">
-    <input type="range" id="bHi" min="80" max="180" step="1" value="180" aria-label="BPM上限">
+    <input type="range" id="bLo" min="60" max="200" step="1" value="60" aria-label="BPM下限">
+    <input type="range" id="bHi" min="60" max="200" step="1" value="200" aria-label="BPM上限">
   </div>
 </div>
 
@@ -213,7 +213,8 @@ textarea{width:100%;min-height:170px;padding:13px;background:var(--surface);
       </select>
     </label>
     <label><input type="checkbox" id="onlyPreview"> 試聴できる曲だけ</label>
-    <label><input type="checkbox" id="onlyRemix"> リミックスがある曲だけ</label>
+    <label><input type="checkbox" id="onlyRemix" disabled> リミックスがある曲だけ</label>
+    <span id="remixNote" style="color:var(--dim)">リミックス情報を読み込み中…</span>
   </div>
   <p class="count" id="count"></p>
   <div id="songs"></div>
@@ -300,7 +301,7 @@ function parseQuery(raw){
   take(/\bbpm\s*(\d{2,3})\b/i, m => { lo = +m[1]-2; hi = +m[1]+2; });
   take(/\b(\d{2,3})\s*bpm\b/i, m => { lo = +m[1]-2; hi = +m[1]+2; });
   // 数字だけを打った場合はテンポ指定とみなす（85〜180のときのみ）
-  if (lo == null && /^\d{2,3}$/.test(s) && +s >= 85 && +s <= 180){
+  if (lo == null && /^\d{2,3}$/.test(s) && +s >= 60 && +s <= 200){
     lo = +s - 2; hi = +s + 2; s = '';
   }
   return { text: s.replace(/\s+/g,' ').trim(), lo, hi };
@@ -318,6 +319,7 @@ async function load(){
       fetch('./programs.json').then(r=>{if(!r.ok)throw new Error('programs.json '+r.status);return r.json()}),
     ]);
     SONGS = a; PROGRAMS = b;
+    loadRemixes();          // 重いので初期表示を待たせない
     PROG_BY_ID = new Map(PROGRAMS.map(p=>[p.id,p]));
     for (const s of SONGS){ s._t = nrm(s.title); s._a = nrm(s.artist);
       s._p = (s.programs||[]).map(p=>nrm(p.name)).join(' '); }
@@ -334,6 +336,27 @@ async function load(){
   }
 }
 
+// ---------------------------------------------- リミックスの遅延読み込み
+let REMIX_READY = false;
+async function loadRemixes(){
+  try{
+    const t = await fetch('./remixes.json').then(r=>{
+      if(!r.ok) throw new Error('remixes.json '+r.status); return r.json();});
+    for (const s of SONGS){ const rx = t[s.key]; if (rx) s.remixes = rx; }
+    REMIX_READY = true;
+    document.getElementById('onlyRemix').disabled = false;
+    document.getElementById('remixNote').hidden = true;
+    render();
+  }catch(e){
+    // 分割していない構成でも動くよう、失敗しても検索は続行する
+    REMIX_READY = SONGS.some(s=>(s.remixes||[]).length);
+    document.getElementById('onlyRemix').disabled = !REMIX_READY;
+    document.getElementById('remixNote').textContent =
+      REMIX_READY ? '' : 'リミックス情報を読み込めませんでした';
+    document.getElementById('remixNote').hidden = REMIX_READY;
+  }
+}
+
 // ------------------------------------------------------------ 検索
 function currentRange(){
   const lo = +document.getElementById('bLo').value;
@@ -344,7 +367,7 @@ function currentRange(){
 function search(){
   const {text, lo, hi} = parseQuery(document.getElementById('q').value);
   const [sLo, sHi] = currentRange();
-  const useSlider = !(sLo<=80 && sHi>=180);
+  const useSlider = !(sLo<=60 && sHi>=200);
   const RLO = lo!=null ? lo : (useSlider ? sLo : null);
   const RHI = hi!=null ? hi : (useSlider ? sHi : null);
 
@@ -358,7 +381,7 @@ function search(){
       if (s.bpm < RLO || s.bpm > RHI) return false;
     }
     if (onlyPrev && !s.previewUrl) return false;
-    if (onlyRmx && !(s.remixes||[]).length) return false;
+    if (onlyRmx && !((s.remixes||[]).length || s.remixCount)) return false;
     if (!terms.length) return true;
     const hay = s._t+' '+s._a+' '+s._p;
     return terms.every(t=>hay.includes(t));
@@ -411,12 +434,15 @@ function songHTML(s, i){
   const progs = (s.programs||[]).map(p=>
     `<button class="prog" data-prog="${esc(p.id)}">${esc(p.name)}${
       p.no?` <span style="color:var(--dim)">${p.no}曲目</span>`:''}</button>`).join('');
-  const rmx = (s.remixes||[]).length ? `
+  const n = (s.remixes||[]).length;
+  const rmx = (!n && s.remixCount) ? `
+    <div class="links"><span style="color:var(--dim)">リミックス ${s.remixCount} 件を読み込み中…</span></div>`
+    : n ? `
     <div class="links"><button data-rmx="${idx}">リミックス ${s.remixes.length} 件を見る</button></div>
     <div class="remixes" id="rmx-${idx}" hidden>${s.remixes.map(r=>`
       <div class="remix">
         <button class="play" data-src="${esc(r.previewUrl)}" ${r.previewUrl?'':'disabled'}>▶</button>
-        <span class="rname">${esc(r.version||r.title)}<span style="color:var(--muted)"> / ${esc(r.artist)}</span></span>
+        <span class="rname">${esc(r.version||r.title)}${r.official?' <span style="color:var(--mid);font-size:11px">公式</span>':''}<span style="color:var(--muted)"> / ${esc(r.artist)}</span></span>
         <span class="rank">人気 ${(r.rank||0).toLocaleString()}</span>
         ${r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener">開く</a>`:''}
       </div>`).join('')}</div>` : '';
@@ -444,7 +470,7 @@ function renderPrograms(){
   const {text} = parseQuery(document.getElementById('q').value);
   const terms = text ? nrm(text).split(' ').filter(Boolean) : [];
   const [sLo,sHi] = currentRange();
-  const useSlider = !(sLo<=80 && sHi>=180);
+  const useSlider = !(sLo<=60 && sHi>=200);
 
   const out = PROGRAMS.filter(p=>{
     if (useSlider){
@@ -547,14 +573,14 @@ function runMatch(){
 // ------------------------------------------------------------ BPMの帯の描画
 function paintRuler(){
   const [lo,hi] = currentRange();
-  const pct = v => (v-80)/100*100;
+  const pct = v => (v-60)/140*100;
   document.getElementById('maskL').style.width = Math.max(0,pct(lo))+'%';
   document.getElementById('maskR').style.width = Math.max(0,100-pct(hi))+'%';
   document.getElementById('tempoVal').textContent =
-    (lo<=80 && hi>=180) ? 'すべて' : `${lo} 〜 ${hi}`;
+    (lo<=60 && hi>=200) ? 'すべて' : `${lo} 〜 ${hi}`;
 }
 document.getElementById('ticks').innerHTML =
-  [80,100,120,140,160].map(v=>`<div class="tick"><span>${v}</span></div>`).join('');
+  [60,90,120,150,180].map(v=>`<div class="tick"><span>${v}</span></div>`).join('');
 
 // ------------------------------------------------------------ イベント
 let timer;

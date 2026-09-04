@@ -261,33 +261,94 @@ def main():
     print(f"FEELCYCLIST: {len(reports)} プログラム / {total_tr} 曲 "
           f"（BPM取得 {bpm_ok} 曲 = {bpm_ok * 100 // max(1, total_tr)}%）")
 
+    # --- 照合用の索引を2種類つくる
+    # (1) Apple Music のトラックID   (2) 曲名+アーティスト名の正規化キー
+    # 古い記事には Apple Music の埋め込みが無く (1) が空になるため、(2) が要る。
     ap_ids = [{t.get("id") for t in a.get("tracks", []) if t.get("id")}
               for a in apple]
+    ap_keys = [{norm(t.get("title", "")) + "|" + norm(t.get("artist", ""))
+                for t in a.get("tracks", []) if t.get("title")}
+               for a in apple]
+    ap_titles = [{norm(t.get("title", ""))
+                  for t in a.get("tracks", []) if t.get("title")}
+                 for a in apple]
     ap_name = {norm_program(a["name"]): i for i, a in enumerate(apple)}
-    used, pairs = set(), []
 
-    for rep in reports:
+    # 手動対応表。どうしても照合できない組を aliases.json に書ける。
+    #   {"BB2 1D": "BB2 ONE DIRECTION", ...}   FEELCYCLIST名 -> Apple Music名
+    manual = {}
+    if os.path.exists("aliases.json"):
+        with open("aliases.json", encoding="utf-8") as f:
+            manual = {norm_program(k): norm_program(v)
+                      for k, v in json.load(f).items()}
+        print(f"手動対応表 {len(manual)} 件")
+
+    # --- 全組み合わせを評価してから、確度の高い順に確定する
+    # 報告順の先着だと、弱い一致が先に良い相手を確保してしまうため。
+    METHOD_RANK = {"manual": 4, "id": 3, "key": 2, "title": 1, "name": 0}
+    THRESHOLD = {"id": OVERLAP_MIN, "key": OVERLAP_MIN, "title": 0.65}
+
+    def overlaps(target, pool, kind):
+        """しきい値を超える候補を [(apple_index, score)] で返す。"""
+        out = []
+        if not target:
+            return out
+        for i, s in enumerate(pool):
+            if not s:
+                continue
+            ov = len(target & s)
+            sc = ov / max(1, min(len(target), len(s)))
+            if ov >= OVERLAP_MIN_COUNT and sc >= THRESHOLD[kind]:
+                out.append((i, sc))
+        return out
+
+    cands = []          # (優先度, 一致度, report_index, apple_index, 方式)
+    for r, rep in enumerate(reports):
+        m = manual.get(norm_program(rep["name"]))
+        if m is not None and m in ap_name:
+            cands.append((METHOD_RANK["manual"], 1.0, r, ap_name[m], "manual"))
+
         rids = {t["appleId"] for t in rep["tracks"] if t["appleId"]}
-        best, best_score = None, 0.0
-        if rids:
-            for i, s in enumerate(ap_ids):
-                if i in used or not s:
-                    continue
-                ov = len(rids & s)
-                score = ov / max(1, min(len(rids), len(s)))
-                if ov >= OVERLAP_MIN_COUNT and score > best_score:
-                    best, best_score = i, score
-        if best is None or best_score < OVERLAP_MIN:
-            i = ap_name.get(norm_program(rep["name"]))
-            if i is not None and i not in used:
-                best, best_score = i, -1.0
-        if best is not None:
-            used.add(best)
-        pairs.append((best, rep))
+        for i, sc in overlaps(rids, ap_ids, "id"):
+            cands.append((METHOD_RANK["id"], sc, r, i, "id"))
 
+        rk = {norm(t["title"]) + "|" + norm(t["artist"])
+              for t in rep["tracks"] if t["title"]}
+        for i, sc in overlaps(rk, ap_keys, "key"):
+            cands.append((METHOD_RANK["key"], sc, r, i, "key"))
+
+        rt = {norm(t["title"]) for t in rep["tracks"] if t["title"]}
+        for i, sc in overlaps(rt, ap_titles, "title"):
+            cands.append((METHOD_RANK["title"], sc, r, i, "title"))
+
+        i = ap_name.get(norm_program(rep["name"]))
+        if i is not None:
+            cands.append((METHOD_RANK["name"], 1.0, r, i, "name"))
+
+    cands.sort(key=lambda x: (-x[0], -x[1]))
+    taken_rep, used = {}, set()
+    how = {}
+    for rank, sc, r, i, method in cands:
+        if r in taken_rep or i in used:
+            continue
+        taken_rep[r] = (i, method, sc)
+        used.add(i)
+        how[method] = how.get(method, 0) + 1
+
+    pairs = [(taken_rep.get(r, (None,))[0], rep)
+             for r, rep in enumerate(reports)]
     for i in range(len(apple)):
         if i not in used:
             pairs.append((i, None))
+
+    print("照合の内訳: " + " / ".join(f"{k}={v}" for k, v in how.items()))
+    weak = [(reports[r]["name"], apple[i]["name"], sc)
+            for r, (i, m, sc) in taken_rep.items()
+            if m == "title" and sc < 0.85]
+    if weak:
+        print(f"曲名のみ・一致度85%未満の照合 {len(weak)} 件（要確認）:")
+        for a, b, sc in sorted(weak, key=lambda x: x[2])[:15]:
+            print(f"  {sc:.2f}  {a}  <->  {b}")
 
     have = {}
     for a in apple:
