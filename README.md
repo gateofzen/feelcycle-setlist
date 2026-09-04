@@ -1,4 +1,4 @@
-# FEELCYCLE 選曲検索
+# CADENCE
 
 FEELCYCLE の楽曲がどのプログラムで使われているかを、曲名・アーティスト名・
 BPM から検索する個人用ツール。手持ちの Apple Music / YouTube プレイリストを
