@@ -6,6 +6,11 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#16121f">
 <title>FEELCYCLE 選曲検索</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="選曲検索">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
@@ -112,10 +117,14 @@ h1{font-family:Anton,sans-serif;font-weight:400;font-size:30px;letter-spacing:.0
 
 /* ---- リミックス */
 .remixes{margin-top:10px;padding-left:13px;border-left:2px solid var(--line)}
-.remix{display:flex;align-items:center;gap:9px;padding:4px 0;font-size:13px}
+.remix{display:flex;align-items:baseline;gap:10px;padding:5px 0;font-size:13px;
+  flex-wrap:wrap}
 .remix .rname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap}
 .remix .rank{font-size:11px;color:var(--dim);flex:none}
+.remix a{font-size:12px;color:var(--muted);text-decoration:none;flex:none;
+  border-bottom:1px solid var(--line);padding-bottom:1px}
+.remix a:hover{color:var(--ink);border-color:var(--focus)}
 
 /* ---- プログラム詳細 */
 dialog{background:var(--surface);color:var(--ink);border:1px solid var(--line);
@@ -136,6 +145,12 @@ dialog::backdrop{background:rgba(11,8,16,.78)}
   border-radius:5px;border:1px solid transparent}
 .trk-link:hover{background:var(--surface-2);border-color:var(--line)}
 .trk-link:hover .act{color:var(--muted)}
+.art-link{font:inherit;color:inherit;text-align:left;padding:0;
+  border-bottom:1px dotted var(--line)}
+.art-link:hover{color:var(--ink);border-bottom-color:var(--focus)}
+.art-link.mini{flex:none;color:var(--dim);font-size:11px;
+  border:1px solid var(--line);border-radius:5px;padding:1px 6px;align-self:center}
+.art-link.mini:hover{border-color:var(--focus);color:var(--ink)}
 .close{position:absolute;top:16px;right:18px;font-size:22px;color:var(--muted);
   line-height:1}
 
@@ -172,6 +187,10 @@ textarea{width:100%;min-height:170px;padding:13px;background:var(--surface);
 <header>
   <h1>FEELCYCLE 選曲検索</h1>
   <span class="stat" id="stat"></span>
+  <button class="btn ghost" id="install" hidden
+          style="margin-left:auto;padding:6px 14px;font-size:13px">
+    アプリとして追加
+  </button>
 </header>
 
 <div id="fatal"></div>
@@ -445,10 +464,11 @@ function songHTML(s, i){
     <div class="links"><button data-rmx="${idx}">リミックス ${s.remixes.length} 件を見る</button></div>
     <div class="remixes" id="rmx-${idx}" hidden>${s.remixes.map(r=>`
       <div class="remix">
-        <button class="play" data-src="${esc(r.previewUrl)}" ${r.previewUrl?'':'disabled'}>▶</button>
         <span class="rname">${esc(r.version||r.title)}${r.official?' <span style="color:var(--mid);font-size:11px">公式</span>':''}<span style="color:var(--muted)"> / ${esc(r.artist)}</span></span>
         <span class="rank">人気 ${(r.rank||0).toLocaleString()}</span>
-        ${r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener">開く</a>`:''}
+        ${r.appleUrl?`<a href="${esc(r.appleUrl)}" target="_blank" rel="noopener">Apple Music</a>`:''}
+        <a href="${esc(r.ytUrl||('https://www.youtube.com/results?search_query='+encodeURIComponent((s.title||'')+' '+(r.version||'')+' '+(r.artist||''))))}"
+           target="_blank" rel="noopener">YouTube</a>
       </div>`).join('')}</div>` : '';
 
   return `<div class="song">
@@ -458,7 +478,10 @@ function songHTML(s, i){
             aria-label="試聴">▶</button>
     <div class="body">
       <div class="title">${esc(s.title)}${s.isRemix?' <span class="ver">リミックス版</span>':''}</div>
-      <div class="artist">${esc(s.artist)}</div>
+      <div class="artist">${s.artist
+        ? `<button class="art-link" data-artist="${esc(s.artist)}"
+             title="このアーティストの曲を一覧する">${esc(s.artist)}</button>`
+        : ''}</div>
       <div class="meta">${bpmChip(s)}${progs}</div>
       <div class="links">
         ${s.appleUrl?`<a href="${esc(s.appleUrl)}" target="_blank" rel="noopener">Apple Music</a>`:''}
@@ -518,6 +541,8 @@ function openProgram(id){
         ${esc(t.title)}<span style="color:var(--muted)"> / ${esc(t.artist)}</span>
         ${t.actions?`<div class="act">${esc(t.position)}　${esc(t.actions)}</div>`:''}
       </button>
+      <button class="art-link mini" data-artist="${esc(t.artist)}"
+              title="このアーティストの曲を一覧する">♦</button>
       ${t.bpm?`<span class="bpm${t.bpmSource==='estimated'?' est':''}"
         style="${t.bpmSource==='estimated'?`color:${bpmColor(t.bpm)}`:`background:${bpmColor(t.bpm)}`}">${t.bpm}</span>`:''}
     </div>`).join('');
@@ -527,8 +552,8 @@ function openProgram(id){
   document.getElementById('dlg').showModal();
 }
 
-/** セットリストの曲から、その曲を収録する全プログラムの表示へ移る */
-function showSong(title){
+/** 検索欄に語を入れ直して、曲タブの結果まで移動する */
+function jumpTo(query){
   document.getElementById('dlg').close();
   // テンポ絞り込みが効いたままだとヒットしないことがあるので解除する
   document.getElementById('bLo').value = 60;
@@ -536,7 +561,7 @@ function showSong(title){
   paintRuler();
   document.getElementById('onlyPreview').checked = false;
   document.getElementById('onlyRemix').checked = false;
-  document.getElementById('q').value = title;
+  document.getElementById('q').value = query;
   document.querySelectorAll('.tabs button').forEach(x=>
     x.setAttribute('aria-selected', x.dataset.tab === 'songs'));
   for (const t of ['songs','programs','match'])
@@ -633,8 +658,10 @@ document.addEventListener('click',e=>{
   if (play){ togglePlay(play); return; }
   const prog = e.target.closest('[data-prog]');
   if (prog){ openProgram(prog.dataset.prog); return; }
+  const art = e.target.closest('[data-artist]');
+  if (art){ jumpTo(art.dataset.artist); return; }
   const sng = e.target.closest('[data-song]');
-  if (sng){ showSong(sng.dataset.song); return; }
+  if (sng){ jumpTo(sng.dataset.song); return; }
   const rmx = e.target.closest('[data-rmx]');
   if (rmx){
     const el = document.getElementById('rmx-'+rmx.dataset.rmx);
@@ -651,6 +678,27 @@ document.getElementById('clearMatch').addEventListener('click',()=>{
 
 paintRuler();
 load();
+
+// ------------------------------------------------- インストール（PWA）
+if ('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>
+    navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+}
+let deferredPrompt = null;
+const installBtn = document.getElementById('install');
+window.addEventListener('beforeinstallprompt', e=>{
+  e.preventDefault();
+  deferredPrompt = e;
+  installBtn.hidden = false;
+});
+installBtn.addEventListener('click', async ()=>{
+  if (!deferredPrompt) return;
+  installBtn.hidden = true;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+});
+window.addEventListener('appinstalled', ()=>{ installBtn.hidden = true; });
 </script>
 </body>
 </html>
