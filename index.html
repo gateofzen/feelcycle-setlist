@@ -91,6 +91,12 @@ h1{font-family:Anton,sans-serif;font-weight:400;font-size:34px;letter-spacing:.1
 
 /* ---- 結果 */
 .count{font-size:13px;color:var(--dim);margin:0 0 12px}
+.chip{display:inline-flex;align-items:center;gap:10px;margin:0 0 12px;
+  padding:5px 8px 5px 13px;border-radius:20px;font-size:13px;
+  background:var(--surface-2);border:1px solid var(--line)}
+.chip button{width:20px;height:20px;border-radius:50%;color:var(--muted);
+  background:var(--surface);line-height:1}
+.chip button:hover{background:var(--hot);color:#16121f}
 .song{display:flex;gap:13px;padding:13px 0;border-top:1px solid var(--line)}
 .song:first-child{border-top:none}
 .art{width:52px;height:52px;border-radius:6px;background:var(--surface-2);
@@ -245,6 +251,7 @@ textarea{width:100%;min-height:170px;padding:13px;background:var(--surface);
     <label><input type="checkbox" id="onlyRemix" disabled> リミックスがある曲だけ</label>
     <span id="remixNote" style="color:var(--dim)">リミックス情報を読み込み中…</span>
   </div>
+  <div id="artistChip" class="chip" hidden></div>
   <p class="count" id="count"></p>
   <div id="songs"></div>
 </section>
@@ -401,6 +408,35 @@ async function loadRemixes(){
   }
 }
 
+/**
+ * 連名を個々のアーティストに分解する。
+ * "Lucas & Steve & Blackstreet" -> {全体, lucas, steve, blackstreet}
+ * 全体も残すのは "Lucas & Steve" のような固有のユニット名を保つため。
+ */
+function artistParts(a){
+  const out = new Set();
+  const s = nrm(a || '');
+  if (!s) return out;
+  out.add(s);
+  for (const p of s.split(/\s+and\s+|\s*,\s*|\s+feat\s+|\s+featuring\s+|\s+with\s+|\s+vs\s+|\s+x\s+/)){
+    const t = p.trim();
+    if (t) out.add(t);
+  }
+  return out;
+}
+
+// アーティストでの絞り込み（検索語とは別枠で持つ）
+let ARTIST = null;
+function setArtist(name){
+  ARTIST = name || null;
+  const chip = document.getElementById('artistChip');
+  chip.hidden = !ARTIST;
+  if (ARTIST){
+    chip.innerHTML = `<span>アーティスト: <b>${esc(ARTIST)}</b></span>`
+      + `<button id="artistClear" title="解除">×</button>`;
+  }
+}
+
 // ------------------------------------------------------------ 検索
 function currentRange(){
   const lo = +document.getElementById('bLo').value;
@@ -419,7 +455,15 @@ function search(){
   const onlyPrev = document.getElementById('onlyPreview').checked;
   const onlyRmx  = document.getElementById('onlyRemix').checked;
 
+  const want = ARTIST ? artistParts(ARTIST) : null;
+
   let out = SONGS.filter(s=>{
+    if (want){
+      const got = new Set([...artistParts(s.artist), ...artistParts(s.artistEn)]);
+      let hit = false;
+      for (const w of want) if (got.has(w)) { hit = true; break; }
+      if (!hit) return false;
+    }
     if (RLO!=null){
       if (!s.bpm) return false;
       if (s.bpm < RLO || s.bpm > RHI) return false;
@@ -440,7 +484,7 @@ function search(){
     title:(a,b)=>(a._dt||a.title).localeCompare(b._dt||b.title),
   }[sort];
   out.sort(cmp);
-  return {out, RLO, RHI, hasQuery: !!(terms.length || RLO!=null)};
+  return {out, RLO, RHI, hasQuery: !!(terms.length || RLO!=null || ARTIST)};
 }
 
 function render(){
@@ -613,9 +657,17 @@ function openProgram(id){
   document.getElementById('dlg').showModal();
 }
 
+/** そのアーティスト（連名なら各人）の曲を一覧する */
+function jumpToArtist(name){
+  jumpTo('');
+  setArtist(name);
+  render();
+}
+
 /** 検索欄に語を入れ直して、曲タブの結果まで移動する */
 function jumpTo(query){
   document.getElementById('dlg').close();
+  setArtist(null);
   // テンポ絞り込みが効いたままだとヒットしないことがあるので解除する
   document.getElementById('bLo').value = 60;
   document.getElementById('bHi').value = 200;
@@ -696,6 +748,7 @@ document.getElementById('ticks').innerHTML =
 // ------------------------------------------------------------ イベント
 let timer;
 document.getElementById('q').addEventListener('input',()=>{
+  if (ARTIST) setArtist(null);       // 手入力を優先する
   clearTimeout(timer); timer = setTimeout(()=>{render(); renderPrograms();},140);
 });
 for (const id of ['bLo','bHi']){
@@ -733,8 +786,11 @@ document.addEventListener('click',e=>{
     } else { box.hidden = true; sc.textContent = '再生'; }
     return;
   }
+  if (e.target.closest('#artistClear')){
+    setArtist(null); render(); return;
+  }
   const art = e.target.closest('[data-artist]');
-  if (art){ jumpTo(art.dataset.artist); return; }
+  if (art){ jumpToArtist(art.dataset.artist); return; }
   const sng = e.target.closest('[data-song]');
   if (sng){ jumpTo(sng.dataset.song); return; }
   const rmx = e.target.closest('[data-rmx]');
