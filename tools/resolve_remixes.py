@@ -24,6 +24,8 @@ import unicodedata
 
 import requests
 
+from artistmatch import same_artist, tokens as artist_tokens
+
 REMIXES = "remixes.json"
 SONGS = "songs.json"
 CACHE = "cache_itunes.json"
@@ -125,6 +127,9 @@ def best_match(remix, pool, song_base):
     return best if score >= 0.6 else None
 
 
+# 日英の表記ゆれ（スティング / Sting）を吸収する照合器
+
+
 def yt(*parts):
     q = " ".join(p for p in parts if p).strip()
     return "https://www.youtube.com/results?search_query=" + requests.utils.quote(q)
@@ -152,37 +157,68 @@ def main():
         if not keys:
             sys.exit(f"'{args.test}' を含む曲が見つかりません")
 
-    total, matched, no_apple = 0, 0, 0
+    total, matched, no_apple, dropped = 0, 0, 0, 0
     for n, k in enumerate(keys, 1):
         s = songs.get(k)
         if not s:
             continue
-        pool = search(f"{s['title']} {s['artist']}", cache)
         sb = base_title(s["title"])
+        pool = search(f"{s['title']} {s['artist']}", cache)
+        # Apple側の候補。原曲アーティスト名義のものを本命とし、
+        # 別名義でも曲名が一致するものは候補に残す（網羅性優先）。
+        pool_strict = [c for c in pool
+                       if same_artist(c.get("artist", ""), s["artist"])]
+        pool = pool_strict or [c for c in pool if base_title(c["name"]) == sb]
 
+        kept, seen_ver = [], set()
         for r in table[k]:
             total += 1
             hit = best_match(r, pool, sb)
-            # Deezer のプレビューは有料化したので必ず外す
-            r["previewUrl"] = hit["previewUrl"] if hit else ""
-            r["appleUrl"] = hit["appleUrl"] if hit else ""
-            if hit and hit.get("artwork"):
-                r["artwork"] = hit["artwork"]
-            r["ytUrl"] = yt(s["title"], r.get("version") or "", r.get("artist"))
-            r["deezerUrl"] = r.pop("url", "")
+
+            # 採否の根拠を3つのいずれかに求める
+            by_artist = same_artist(r.get("artist", ""), s["artist"])
+            in_title = bool(artist_tokens(s["artist"])
+                            & artist_tokens(r.get("title", "")))
+            if not (by_artist or hit or in_title):
+                dropped += 1
+                continue
+
+            # Apple側で裏が取れたならアーティスト表記はそちらを正とする
             if hit:
+                r["artist"] = hit["artist"] or r.get("artist", "")
+                if hit.get("artwork"):
+                    r["artwork"] = hit["artwork"]
                 matched += 1
             else:
                 no_apple += 1
+
+            r["previewUrl"] = hit["previewUrl"] if hit else ""
+            r["appleUrl"] = hit["appleUrl"] if hit else ""
+            r["official"] = same_artist(r.get("artist", ""), s["artist"])
+            r["ytUrl"] = yt(s["title"], r.get("version") or "", r.get("artist"))
+            r["deezerUrl"] = r.pop("url", "")
+
+            # 表記が揃った結果として生じる重複を畳む
+            vkey = norm(r.get("version") or r.get("title", ""))
+            if vkey in seen_ver:
+                dropped += 1
+                continue
+            seen_ver.add(vkey)
+            kept.append(r)
+
+        kept.sort(key=lambda x: (not x["appleUrl"], -(x.get("rank") or 0)))
+        table[k] = kept
 
         if args.test:
             print(f"\n対象: {s['title']} / {s['artist']}")
             print(f"Apple Music側の候補 {len(pool)} 件\n")
             for r in table[k]:
-                mark = "○" if r["previewUrl"] else "×"
+                mark = "○" if r["appleUrl"] else "△"
                 print(f"  {mark} {r.get('version') or r['title']}")
-                print(f"      Apple: {r['appleUrl'][:78] or '(見つからず)'}")
-                print(f"      試聴 : {'あり' if r['previewUrl'] else 'なし'}")
+                print(f"      アーティスト: {r['artist']}"
+                      f"{'  [公式]' if r.get('official') else ''}")
+                print(f"      Apple: {r['appleUrl'][:74] or '(見つからず・YouTubeのみ)'}")
+            print(f"\n  残存 {len(table[k])} 件 / 除外 {dropped} 件")
             return
 
         if n % 100 == 0:
@@ -191,13 +227,28 @@ def main():
                       ensure_ascii=False)
 
     json.dump(cache, open(CACHE, "w", encoding="utf-8"), ensure_ascii=False)
+    # 空になった曲はキーごと落とす
+    table = {k: v for k, v in table.items() if v}
     json.dump(table, open(REMIXES, "w", encoding="utf-8"),
               ensure_ascii=False, separators=(",", ":"))
 
+    # サイトの絞り込みが参照する件数を合わせる
+    slist = json.load(open(SONGS, encoding="utf-8"))
+    for x in slist:
+        x["remixCount"] = len(table.get(x["key"], []))
+    json.dump(slist, open(SONGS, "w", encoding="utf-8"),
+              ensure_ascii=False, indent=1)
+
+    left = sum(len(v) for v in table.values())
+    empty = sum(1 for v in table.values() if not v)
+    have = sum(1 for v in table.values() if v)
     print("\n--- 結果 ---")
-    print(f"リミックス {total} 件")
-    print(f"  Apple Musicで試聴可 {matched} 件 = {matched * 100 // max(1, total)}%")
+    print(f"元のリミックス {total} 件 -> 残存 {left} 件")
+    print(f"  除外（別曲・重複）  {dropped} 件")
+    print(f"  Apple Musicで試聴可 {matched} 件")
     print(f"  YouTube検索のみ     {no_apple} 件")
+    print(f"リミックスが無くなった曲 {empty} 件")
+    print(f"リミックスを持つ曲 {have} 曲")
 
 
 if __name__ == "__main__":
