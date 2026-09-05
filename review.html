@@ -126,10 +126,20 @@ dialog input{width:100%;padding:8px 10px;background:var(--bg);
     トークンはこの端末のブラウザにのみ保存され、リポジトリには入りません。
     共用端末では作業後に「消去」してください。
   </div>
-  <div style="display:flex;gap:8px;margin-top:16px">
+  <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
     <button class="primary" id="save">保存</button>
+    <button id="mkurl">設定用URLを作る</button>
     <button id="clear">消去</button>
     <button id="close" style="margin-left:auto">閉じる</button>
+  </div>
+  <div id="urlout" hidden style="margin-top:14px">
+    <label>設定用URL</label>
+    <input id="urltext" readonly onclick="this.select()">
+    <div class="note">
+      他の端末でこのURLを開くだけで設定が終わります。自分宛にメールやメモで
+      送ってください。<b>このURLはトークンそのものです。</b>
+      他人に見える場所には置かないでください。
+    </div>
   </div>
 </dialog>
 
@@ -399,14 +409,52 @@ $('#clear').addEventListener('click', ()=>{
   $('#repo').value = $('#branch').value = $('#token').value = '';
   setSync('同期', '');
 });
+$('#mkurl').addEventListener('click', async ()=>{
+  const repo = $('#repo').value.trim(), token = $('#token').value.trim();
+  if (!repo || !token){ alert('リポジトリとトークンを入れてください'); return; }
+  const u = location.origin + location.pathname
+    + '#token=' + encodeURIComponent(token)
+    + '&repo=' + encodeURIComponent(repo)
+    + '&branch=' + encodeURIComponent($('#branch').value.trim() || 'main');
+  $('#urlout').hidden = false;
+  $('#urltext').value = u;
+  $('#urltext').select();
+  try{ await navigator.clipboard.writeText(u);
+       $('#mkurl').textContent = 'コピーしました'; }
+  catch(e){ $('#mkurl').textContent = '下のURLをコピーしてください'; }
+});
 $('#close').addEventListener('click', ()=> $('#dlg').close());
 window.addEventListener('beforeunload', e => {
   if (DIRTY.size){ e.preventDefault(); e.returnValue = ''; }
 });
 
+/**
+ * URLの # 以降に設定が入っていれば取り込む。
+ *   review.html#token=github_pat_...&repo=owner/name&branch=main
+ * フラグメントはサーバーに送信されないため、公開ファイルにトークンを
+ * 置かずに済む。取り込んだ直後にURLから消す。
+ */
+function adoptFromUrl(){
+  const h = location.hash.replace(/^#/, '');
+  if (!h) return false;
+  const q = new URLSearchParams(h);
+  const token = q.get('token');
+  if (!token) return false;
+  const c = cfg();
+  localStorage.setItem(LS+':cfg', JSON.stringify({
+    repo: q.get('repo') || c.repo || '',
+    branch: q.get('branch') || c.branch || 'main',
+    token: token,
+  }));
+  // 履歴に残さず、アドレスバーからも消す
+  history.replaceState(null, '', location.pathname + location.search);
+  return true;
+}
+
 // ---------------------------------------------------------------- 起動
 (async ()=>{
   loadLocal();
+  const adopted = adoptFromUrl();
   try{
     ROWS = await fetch('./review-data.json').then(r=>{
       if (!r.ok) throw new Error('review-data.json '+r.status); return r.json(); });
@@ -420,6 +468,8 @@ window.addEventListener('beforeunload', e => {
           + '設定しなくても、この端末の中だけで作業できます。');
     setSync('同期', '');
   } else {
+    if (adopted) showMsg('この端末に同期設定を保存しました。'
+      + '次回からURLの後ろの部分は不要です。');
     try{ await pull(); setSync('同期済み','sync-ok'); }
     catch(e){ setSync('同期失敗','sync-ng'); showMsg(`同期できません: ${e.message}`); }
   }
