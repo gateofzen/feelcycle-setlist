@@ -39,6 +39,9 @@ h1{font-size:19px;margin:0 0 4px}
 /* 1曲分 */
 .row{padding:13px 0;border-top:1px solid var(--ln)}
 .row.done{opacity:.4}
+.row.saved{animation:flash .5s}
+@keyframes flash{from{background:rgba(87,185,143,.22)}to{background:transparent}}
+@media (prefers-reduced-motion:reduce){.row.saved{animation:none}}
 .head{display:flex;gap:12px;align-items:baseline}
 .t{font-weight:700;flex:1;min-width:0}
 .a{color:var(--mut);font-size:13px}
@@ -194,10 +197,14 @@ function b64decode(b64){
 
 async function gh(path, opts){
   const c = cfg();
-  const r = await fetch(`${API}/repos/${c.repo}/contents/${path}`, {
+  // 条件付きリクエストで古い版数が返らないよう、キャッシュを完全に切る
+  const sep = path.includes('?') ? '&' : '?';
+  const r = await fetch(`${API}/repos/${c.repo}/contents/${path}${sep}_=${Date.now()}`, {
     ...opts,
+    cache: 'no-store',
     headers: {Authorization: `Bearer ${c.token}`,
               Accept: 'application/vnd.github+json',
+              'If-None-Match': '',
               ...(opts && opts.headers)},
   });
   return r;
@@ -220,38 +227,46 @@ async function pull(){
   return remote;
 }
 
+let pushing = false, autoTimer = null;
+
 async function push(){
   const c = cfg();
   if (!c.repo || !c.token){ $('#dlg').showModal(); return; }
+  if (pushing) return;                    // 二重送信を防ぐ
+  pushing = true;
   setSync('同期中…', 'sync-go');
   try{
-    await pull();                         // 先に統合してから送る
-    const body = {
-      message: `BPM確認 ${Object.keys(VALUES).length}件`,
-      content: b64encode(JSON.stringify(VALUES, null, 1)),
-      branch: c.branch || 'main',
-    };
-    if (SHA) body.sha = SHA;
-    let r = await gh(FILE, {method:'PUT', body: JSON.stringify(body)});
-    if (r.status === 409){                // 競合したら取り直して再送
-      await pull();
+    let last = '';
+    // 版数の食い違いは他端末からの更新でも起きる。数回まで取り直して再送する。
+    for (let i = 0; i < 4; i++){
+      await pull();                       // 先に統合してから送る
+      const body = {
+        message: `BPM確認 ${Object.keys(VALUES).length}件`,
+        content: b64encode(JSON.stringify(VALUES, null, 1)),
+        branch: c.branch || 'main',
+      };
       if (SHA) body.sha = SHA;
-      body.content = b64encode(JSON.stringify(VALUES, null, 1));
-      r = await gh(FILE, {method:'PUT', body: JSON.stringify(body)});
+      const r = await gh(FILE, {method:'PUT', body: JSON.stringify(body)});
+      if (r.ok){
+        SHA = (await r.json()).content.sha;
+        DIRTY.clear();
+        saveLocal();
+        setSync('同期済み', 'sync-ok');
+        showMsg('');
+        render();
+        return;
+      }
+      last = `${r.status} ${(await r.text()).slice(0, 100)}`;
+      if (r.status !== 409 && r.status !== 422) break;
+      await new Promise(res => setTimeout(res, 700 * (i + 1)));
     }
-    if (!r.ok){
-      const t = await r.text();
-      throw new Error(`${r.status} ${t.slice(0,120)}`);
-    }
-    SHA = (await r.json()).content.sha;
-    DIRTY.clear();
-    saveLocal();
-    setSync('同期済み', 'sync-ok');
-    render();
+    throw new Error(last);
   }catch(e){
     setSync('同期失敗', 'sync-ng');
     showMsg(`同期できませんでした: ${e.message}<br>
-      設定を確認してください。入力内容はこの端末に保存されています。`);
+      入力内容はこの端末に保存されています。「同期」を押すと再試行します。`);
+  }finally{
+    pushing = false;
   }
 }
 
@@ -325,12 +340,16 @@ function setValue(id, v){
   }
   DIRTY.add(id);
   saveLocal();
+  const row = document.querySelector(`.row[data-id="${CSS.escape(id)}"]`);
+  if (row){ row.classList.remove('saved'); void row.offsetWidth;
+            row.classList.add('saved'); }
   setSync(`同期（${DIRTY.size}）`, 'sync-go');
   const done = ROWS.filter(r => VALUES[r.id] != null).length;
   $('#stat').textContent = `${done} / ${ROWS.length}（未同期 ${DIRTY.size}）`;
   $('#bar').style.width = (done / Math.max(1, ROWS.length) * 100) + '%';
-  // 10件たまったら自動で送る
-  if (DIRTY.size >= 10) push();
+  // 10件たまったら自動で送る。入力が続いている間は待つ。
+  clearTimeout(autoTimer);
+  if (DIRTY.size >= 10) autoTimer = setTimeout(push, 1500);
 }
 
 // ---------------------------------------------------------------- 操作
@@ -367,7 +386,8 @@ document.addEventListener('click', async e => {
       const row = tap.closest('.row');
       row.querySelector('.val').value = bpm;
       setValue(row.dataset.id, bpm);
-    } else tap.textContent = 'タップ…';
+      row.classList.add('done');
+    } else tap.textContent = `あと${3 - taps.length}回`;
     return;
   }
 });
@@ -375,12 +395,27 @@ audio.addEventListener('ended', ()=>{
   if (playing){ playing.dataset.on='false'; playing.textContent='▶'; playing=null; }
 });
 
-document.addEventListener('change', e => {
+function commit(el){
+  const row = el.closest('.row');
+  if (!row) return;
+  const v = el.value.trim();
+  setValue(row.dataset.id, v);
+  row.classList.toggle('done', v !== '' && VALUES[row.dataset.id] != null);
+}
+// input は打鍵ごとに発火する。change だけだと入力欄から離れるまで保存されない。
+let typeTimer;
+document.addEventListener('input', e => {
   if (!e.target.classList.contains('val')) return;
-  const row = e.target.closest('.row');
-  setValue(row.dataset.id, e.target.value.trim());
-  row.classList.toggle('done', e.target.value.trim() !== '');
+  clearTimeout(typeTimer);
+  const el = e.target;
+  typeTimer = setTimeout(()=> commit(el), 400);
 });
+document.addEventListener('change', e => {
+  if (e.target.classList.contains('val')){ clearTimeout(typeTimer); commit(e.target); }
+});
+document.addEventListener('focusout', e => {
+  if (e.target.classList.contains('val')){ clearTimeout(typeTimer); commit(e.target); }
+}, true);
 
 $('#filter').addEventListener('change', ()=>{ SHOWN = 200; render(); });
 $('#sort').addEventListener('change', ()=>{ SHOWN = 200; render(); });
