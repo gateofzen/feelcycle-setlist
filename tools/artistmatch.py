@@ -113,7 +113,8 @@ def phonetic_v(s):
     return s
 
 
-SIMILAR = 0.8
+SIMILAR = 0.8        # 表記体系をまたぐとき
+SIMILAR_SAME = 0.92  # 同じ表記体系同士
 SIMILAR_V = 0.8
 
 # 音写の乖離が大きく機械的には照合できない組。気づいたら足していく。
@@ -149,6 +150,10 @@ def _alias(s):
     return None
 
 
+def has_kana(s):
+    return any("\u3040" <= c <= "\u30ff" for c in (s or ""))
+
+
 def same_artist(a, b):
     """
     同じアーティストとみなせるか。
@@ -162,31 +167,48 @@ def same_artist(a, b):
     ta, tb = tokens(a), tokens(b)
     if not ta or not tb:
         return False
-    # 2文字の語（Ed, Lil など）は共通しやすいので、それだけでは決めない
-    if {t for t in ta & tb if len(t) >= 3}:
-        return True
+    # 語の一致。1語共有するだけでは足りない（Taylor Swift と Taylor Swi ng）。
+    # 短い側の語がすべて長い側に含まれるか、語集合が半分以上重なることを求める。
+    la = {t for t in ta if len(t) >= 3}
+    lb = {t for t in tb if len(t) >= 3}
+    if la and lb:
+        if la <= lb or lb <= la:
+            return True
+        if len(la & lb) / len(la | lb) >= 0.5:
+            return True
+
+    cross = has_kana(a) != has_kana(b)
+    # 表記体系をまたぐ場合は音写のぶれを許すが、同じ表記体系同士では
+    # 綴りの近い別人（Bruno Mars と Bruno Major）を通さないよう厳しくする。
+    thr = SIMILAR if cross else SIMILAR_SAME
 
     pa, pb = phonetic(a), phonetic(b)
     if min(len(pa), len(pb)) >= 3:
         # 連名（"Sting & Shaggy" と "スティング"）は包含で拾う
         if pa in pb or pb in pa:
             return True
-        if difflib.SequenceMatcher(None, pa, pb).ratio() >= SIMILAR:
+        if difflib.SequenceMatcher(None, pa, pb).ratio() >= thr:
             return True
-    # 子音だけでは情報が足りない名前（Avicii, Rihanna など）は母音込みで見る
-    va, vb = phonetic_v(a), phonetic_v(b)
-    if min(len(va), len(vb)) >= 4 and \
-            difflib.SequenceMatcher(None, va, vb).ratio() >= SIMILAR_V:
-        return True
-    # 語単位でも見る。片方の語がもう片方の語と近ければ同一とみなす。
+    # 母音込みの比較は表記体系をまたぐときだけに使う。
+    # 英語同士に使うと綴りの近い別名（Taylor Swi ng）を通してしまう。
+    if cross:
+        va, vb = phonetic_v(a), phonetic_v(b)
+        if min(len(va), len(vb)) >= 4 and \
+                difflib.SequenceMatcher(None, va, vb).ratio() >= SIMILAR_V:
+            return True
+    # 語単位の比較も表記体系をまたぐときだけ。同script同士では
+    # 姓名の片方が同じだけの別人（Bruno Mars と Bruno Major）を通してしまう。
+    if not cross:
+        return False
     for x in ta:
         px, vx = phonetic(x), phonetic_v(x)
         for y in tb:
             py, vy = phonetic(y), phonetic_v(y)
             if min(len(px), len(py)) >= 3 and \
-                    difflib.SequenceMatcher(None, px, py).ratio() >= 0.85:
+                    difflib.SequenceMatcher(None, px, py).ratio() >= (
+                        0.85 if cross else 0.95):
                 return True
-            if min(len(vx), len(vy)) >= 4 and \
+            if cross and min(len(vx), len(vy)) >= 4 and \
                     difflib.SequenceMatcher(None, vx, vy).ratio() >= 0.85:
                 return True
     return False
@@ -225,6 +247,13 @@ if __name__ == "__main__":
         ("The Weeknd", "The Chainsmokers", False),
         ("DJ Snake", "DJ Khaled", False),
         ("Ed Sheeran", "Ed Solo", False),
+        ("Taylor Swift", "Taylor Swi ng", False),
+        ("Taylor Swift", "テイラー・スウィフト", True),
+        ("Taylor Swift", "Taylor Swift", True),
+        ("David Guetta", "David Guetta & MORTEN", True),
+        ("Lucas & Steve", "Lucas & Steve & Blackstreet", True),
+        ("Bruno Mars", "Bruno Major", False),
+        ("Coldplay", "Coldplay & Selena Gomez", True),
     ]
     ok = 0
     for a, b, exp in cases:
