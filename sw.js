@@ -1,5 +1,5 @@
 /* CADENCE — オフライン対応 */
-const VERSION = 'v8';
+const VERSION = 'v11';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 

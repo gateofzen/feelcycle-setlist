@@ -181,6 +181,9 @@ textarea{width:100%;min-height:170px;padding:13px;background:var(--surface);
   padding:14px 16px;margin:16px 0;font-size:13.5px;line-height:1.9}
 
 .empty{color:var(--dim);padding:40px 0;text-align:center;font-size:14px}
+footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);
+  font-size:12px;color:var(--dim);line-height:2}
+footer a{color:var(--muted)}
 .error{background:#3a1f2b;border:1px solid #6b3049;border-radius:9px;
   padding:16px;font-size:13.5px;color:#f3c9d6}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -274,6 +277,11 @@ textarea{width:100%;min-height:170px;padding:13px;background:var(--surface);
   <div id="matchOut"></div>
 </section>
 
+<footer>
+  楽曲BPMとリミックス情報は <a href="https://www.deezer.com" target="_blank" rel="noopener">Deezer</a>
+  ・セットリストとペダル回転数は <a href="https://feel.shirataki.me/" target="_blank" rel="noopener">FEELCYCLIST</a>
+  ・楽曲情報と試聴は Apple Music
+</footer>
 </div>
 
 <dialog id="dlg">
@@ -296,8 +304,9 @@ textarea{width:100%;min-height:170px;padding:13px;background:var(--surface);
 let SONGS = [], PROGRAMS = [], PROG_BY_ID = new Map();
 // プログラムのセットリストから曲の英語表記を引くための対応表
 const EN = new Map();
+const songOf = t => EN.get(nrm(t.title) + '|' + nrm(t.artist));
 const disp = t => {
-  const s = EN.get(nrm(t.title) + '|' + nrm(t.artist));
+  const s = songOf(t);
   return s ? [s._dt, s._da] : [t.title, t.artist];
 };
 const audio = new Audio();
@@ -465,8 +474,9 @@ function search(){
       if (!hit) return false;
     }
     if (RLO!=null){
-      if (!s.bpm) return false;
-      if (s.bpm < RLO || s.bpm > RHI) return false;
+      const v = (s.bpmSource === 'manual' || s.bpmSource === 'rekordbox')
+        ? s.bpm : (s.bpmSong || s.bpm);
+      if (!v || v < RLO || v > RHI) return false;
     }
     if (onlyPrev && !s.previewUrl) return false;
     if (onlyRmx && !((s.remixes||[]).length || s.remixCount)) return false;
@@ -479,8 +489,8 @@ function search(){
   const cmp = {
     programs:(a,b)=>(b.programs?.length||0)-(a.programs?.length||0)
                     || (a._dt||a.title).localeCompare(b._dt||b.title),
-    bpm:(a,b)=>(a.bpm||9999)-(b.bpm||9999),
-    bpmDesc:(a,b)=>(b.bpm||0)-(a.bpm||0),
+    bpm:(a,b)=>((a.bpmSong||a.bpm)||9999)-((b.bpmSong||b.bpm)||9999),
+    bpmDesc:(a,b)=>((b.bpmSong||b.bpm)||0)-((a.bpmSong||a.bpm)||0),
     title:(a,b)=>(a._dt||a.title).localeCompare(b._dt||b.title),
   }[sort];
   out.sort(cmp);
@@ -530,12 +540,24 @@ async function loadSoundcloud(){
   }catch(e){ SC_FAV = {}; }
 }
 
+/** 表示するBPM。確からしい順に採る。 */
+const BPM_LABEL = {manual:'BPM', rekordbox:'BPM', report:'ペダル', estimated:'推定'};
+function bpmOf(s){
+  // 手動確定と rekordbox は楽曲のテンポそのものなので最優先
+  if (s.bpmSource === 'manual' || s.bpmSource === 'rekordbox')
+    return [s.bpm, 'BPM', false];
+  if (s.bpmSong) return [s.bpmSong, 'BPM', false];
+  if (s.bpm) return [s.bpm, BPM_LABEL[s.bpmSource] || 'BPM',
+                     s.bpmSource === 'estimated'];
+  return [null, '', false];
+}
+
 function bpmChip(s){
-  if (!s.bpm) return '<span class="prog" style="color:var(--dim)">BPM不明</span>';
-  const est = s.bpmSource === 'estimated';
-  const c = bpmColor(s.bpm);
+  const [v, label, est] = bpmOf(s);
+  if (!v) return '<span class="prog" style="color:var(--dim)">BPM不明</span>';
+  const c = bpmColor(v);
   return `<span class="bpm${est?' est':''}" style="${est?`color:${c}`:`background:${c}`}">
-    ${s.bpm}<small>${est?'推定':'BPM'}</small></span>`;
+    ${v}<small>${label}</small></span>`;
 }
 
 function songHTML(s, i){
@@ -635,6 +657,8 @@ function openProgram(id){
   document.getElementById('dlgDesc').textContent = p.description || '';
   document.getElementById('dlgTracks').innerHTML = (p.tracks||[]).map(t=>{
     const [dt, da] = disp(t);
+    const so = songOf(t);
+    const song = so && so.bpmSong;
     return `
     <div class="trk">
       <span class="n">${t.stretch?'▽':t.no}</span>
@@ -647,8 +671,12 @@ function openProgram(id){
                 title="このアーティストの曲を一覧する">${esc(da)}</button>
         ${t.actions?`<div class="act">${esc(t.position)}　${esc(t.actions)}</div>`:''}
       </span>
-      ${t.bpm?`<span class="bpm${t.bpmSource==='estimated'?' est':''}"
-        style="${t.bpmSource==='estimated'?`color:${bpmColor(t.bpm)}`:`background:${bpmColor(t.bpm)}`}">${t.bpm}</span>`:''}
+      ${song
+        ? `<span class="bpm" style="background:${bpmColor(song)}">${song}</span>`
+        : (t.bpm?`<span class="bpm${t.bpmSource==='estimated'?' est':''}"
+            style="${t.bpmSource==='estimated'?`color:${bpmColor(t.bpm)}`:`background:${bpmColor(t.bpm)}`}">${t.bpm}</span>`:'')}
+      ${song && t.bpm && Math.abs(song - t.bpm) > 3
+        ? `<span class="rank" title="レッスンでのペダル回転数">ペダル ${t.bpm}</span>` : ''}
     </div>`;
   }).join('');
   document.getElementById('dlgLinks').innerHTML =
