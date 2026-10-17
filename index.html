@@ -386,6 +386,9 @@ async function load(){
     const withBpm = SONGS.filter(s=>s.bpm).length;
     document.getElementById('stat').textContent =
       `${PROGRAMS.length} プログラム / ${SONGS.length} 曲（BPM判明 ${withBpm}）`;
+    // ?q=検索語 で開かれたら、その語で検索した状態にする（MP3 Tagger などからのリンク用）
+    const q0 = new URLSearchParams(location.search).get('q');
+    if (q0) document.getElementById('q').value = q0;
     render(); renderPrograms();
   }catch(e){
     document.getElementById('fatal').innerHTML =
