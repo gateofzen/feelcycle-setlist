@@ -148,8 +148,8 @@ def parse_report(post):
         lines = html_to_lines(src)
         tracks, cur = [], None
         for ln in lines:
-            m = re.match(r"^\U0001F6B2\s*0*(\d+)", ln)
-            is_stretch = ln.startswith("\u231b")
+            m = re.match(r"^\U0001F6B2\uFE0F?\s*0*(\d+)", ln)
+            is_stretch = bool(re.match(r"^\u231b\uFE0F?", ln))
             if m or is_stretch:
                 if cur:
                     tracks.append(cur)
@@ -157,7 +157,7 @@ def parse_report(post):
                        "stretch": bool(is_stretch), "title": "", "artist": "",
                        "appleId": "", "bpm": "", "position": "",
                        "actions": "", "duration": ""}
-                rest = re.sub(r"^[\U0001F6B2\u231b]\s*\d*\s*(Stretch)?", "",
+                rest = re.sub(r"^[\U0001F6B2\u231b]\uFE0F?\s*\d*\s*(Stretch)?", "",
                               ln).strip()
                 if rest and "/" in rest:
                     cur["title"], cur["artist"] = split_title_artist(rest)
