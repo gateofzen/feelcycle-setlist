@@ -1,5 +1,5 @@
 ﻿/* CADENCE 窶・繧ｪ繝輔Λ繧､繝ｳ蟇ｾ蠢・*/
-const VERSION = 'v12';
+const VERSION = 'v13';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
@@ -61,4 +61,5 @@ self.addEventListener('fetch', e => {
       .catch(() => caches.match(req).then(r => r || caches.match('./index.html')))
   );
 });
+
 

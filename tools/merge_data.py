@@ -355,9 +355,15 @@ def main():
         for t in a.get("tracks", []):
             if t.get("id"):
                 have[t["id"]] = t
+    # Apple側のトラックに試聴URLが無いこともある（取得スクリプトが
+    # その項目を集めなかった場合）。appleId があるだけで「補完不要」と
+    # 判断すると、試聴URLとBPM推定が丸ごと欠ける。ここで拾い直す。
+    thin = [k for k, v in have.items() if not v.get("previewUrl")]
+    if thin:
+        print(f"Apple側のメタ情報が不足: {len(thin)} 件 → iTunesで補完します")
     need = uniq([t["appleId"] for _, rep in pairs if rep
                  for t in rep["tracks"]
-                 if t["appleId"] and t["appleId"] not in have])
+                 if t["appleId"] and t["appleId"] not in have] + thin)
     if need:
         print(f"補完が必要な楽曲: {len(need)} 件")
         have.update({k: {"id": k, **v} for k, v in lookup(need).items()})
