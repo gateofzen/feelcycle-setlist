@@ -1,14 +1,14 @@
-/* CADENCE — オフライン対応 */
-const VERSION = 'v11';
+﻿/* CADENCE 窶・繧ｪ繝輔Λ繧､繝ｳ蟇ｾ蠢・*/
+const VERSION = 'v12';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
-// アプリ本体。インストール時に先読みする。
+// 繧｢繝励Μ譛ｬ菴薙ゅう繝ｳ繧ｹ繝医・繝ｫ譎ゅ↓蜈郁ｪｭ縺ｿ縺吶ｋ縲・
 const SHELL_FILES = [
   './', './index.html', './matcher.js',
   './manifest.webmanifest', './icon-192.png', './icon-512.png',
 ];
-// データ。重いので初回アクセス時にキャッシュする。
+// 繝・・繧ｿ縲る㍾縺・・縺ｧ蛻晏屓繧｢繧ｯ繧ｻ繧ｹ譎ゅ↓繧ｭ繝｣繝・す繝･縺吶ｋ縲・
 const DATA_FILES = ['songs.json', 'programs.json', 'remixes.json'];
 
 self.addEventListener('install', e => {
@@ -32,12 +32,12 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return;   // 試聴音源などは素通し
+  if (url.origin !== self.location.origin) return;   // 隧ｦ閨ｴ髻ｳ貅舌↑縺ｩ縺ｯ邏騾壹＠
 
   const isData = DATA_FILES.some(f => url.pathname.endsWith(f));
 
   if (isData) {
-    // データは即座にキャッシュを返しつつ、裏で更新する
+    // 繝・・繧ｿ縺ｯ蜊ｳ蠎ｧ縺ｫ繧ｭ繝｣繝・す繝･繧定ｿ斐＠縺､縺､縲∬｣上〒譖ｴ譁ｰ縺吶ｋ
     e.respondWith(
       caches.open(DATA).then(async cache => {
         const hit = await cache.match(req);
@@ -51,7 +51,7 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // 本体はネットワーク優先。圏外ならキャッシュへ落とす。
+  // 譛ｬ菴薙・繝阪ャ繝医Ρ繝ｼ繧ｯ蜆ｪ蜈医ょ恟螟悶↑繧峨く繝｣繝・す繝･縺ｸ關ｽ縺ｨ縺吶・
   e.respondWith(
     fetch(req)
       .then(res => {
@@ -61,3 +61,4 @@ self.addEventListener('fetch', e => {
       .catch(() => caches.match(req).then(r => r || caches.match('./index.html')))
   );
 });
+
