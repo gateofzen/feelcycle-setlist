@@ -534,6 +534,23 @@ function scUrl(s){
     + encodeURIComponent(`${t} ${a} remix`.trim());
 }
 
+/**
+ * Android では soundcloud.com のリンクが SoundCloud アプリに横取りされ、
+ * アプリは /search を扱えないのでホーム画面に落ちてしまう。
+ * そこで intent:// でブラウザを明示して開く。Chrome が無い端末は
+ * browser_fallback_url により通常のURLへ戻る。
+ * お気に入り（個別トラックのURL）はアプリで開く方が良いので対象外。
+ */
+const IS_ANDROID = /Android/i.test(navigator.userAgent || '');
+function scHref(s){
+  const url = scUrl(s);
+  if (!IS_ANDROID) return url;
+  return 'intent://' + url.slice(8)
+    + '#Intent;scheme=https;action=android.intent.action.VIEW'
+    + ';package=com.android.chrome'
+    + ';S.browser_fallback_url=' + encodeURIComponent(url) + ';end';
+}
+
 /** 手動登録したお気に入りリミックス（soundcloud.json）。無くても動く。 */
 let SC_FAV = {};
 async function loadSoundcloud(){
@@ -611,7 +628,7 @@ function songHTML(s, i){
       <div class="links">
         ${s.appleUrl?`<a href="${esc(s.appleUrl)}" target="_blank" rel="noopener">Apple Music</a>`:''}
         ${s.ytUrl?`<a href="${esc(s.ytUrl)}" target="_blank" rel="noopener">YouTube</a>`:''}
-        <a href="${esc(scUrl(s))}" target="_blank" rel="noopener">SoundCloud</a>
+        <a href="${esc(scHref(s))}" target="_blank" rel="noopener">SoundCloud</a>
       </div>
       ${favHtml}${rmx}
     </div>
