@@ -1,0 +1,116 @@
+﻿<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SoundCloud link test</title>
+<style>
+  :root{
+    --bg:#f7f6f3; --card:#fff; --fg:#1c1b19; --dim:#6b6861;
+    --line:#dcd8d0; --accent:#c25a1e; --ok:#1f7a4d;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#17161a; --card:#201f24; --fg:#ece9e4; --dim:#9a958d;
+           --line:#33313a; --accent:#e8813f; --ok:#4fbe88;
+           color-scheme:dark; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",
+            "Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif}
+  .wrap{max-width:640px;margin:0 auto;padding:24px 16px 48px}
+  h1{font-size:20px;margin:0 0 4px;letter-spacing:.01em}
+  .lead{color:var(--dim);font-size:13px;margin:0 0 20px}
+  .env{background:var(--card);border:1px solid var(--line);border-radius:10px;
+       padding:12px 14px;margin-bottom:24px;font-size:12px;color:var(--dim);
+       word-break:break-all}
+  .env b{color:var(--fg);font-weight:600}
+  .t{background:var(--card);border:1px solid var(--line);border-radius:10px;
+     padding:14px;margin-bottom:12px}
+  .t h2{font-size:15px;margin:0 0 2px;display:flex;gap:8px;align-items:baseline}
+  .n{display:inline-block;min-width:1.6em;color:var(--accent);
+     font-weight:700;font-variant-numeric:tabular-nums}
+  .t p{margin:4px 0 12px;font-size:13px;color:var(--dim)}
+  .go{display:inline-block;background:var(--accent);color:#fff;
+      text-decoration:none;padding:9px 18px;border-radius:7px;
+      font-weight:600;font-size:14px;border:0;cursor:pointer}
+  .go:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+  code{display:block;margin-top:10px;font-size:11px;color:var(--dim);
+       font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+       overflow-x:auto;white-space:pre;padding-bottom:2px}
+  .hint{font-size:13px;color:var(--dim);margin-top:24px;
+        border-top:1px solid var(--line);padding-top:16px}
+</style>
+<div class="wrap">
+<h1>SoundCloud link test</h1>
+<p class="lead">Androidで SoundCloud の検索を開く方法を順に試します。
+「検索結果が出た」ものがあれば、その番号を記録してください。</p>
+
+<div class="env" id="env"></div>
+<div id="tests"></div>
+
+<p class="hint">各リンクを押したら戻ってきて次を試してください。
+判定は「SoundCloudの検索結果（曲が並んだ画面）が出たか」です。
+アプリのホーム画面やライブラリが出た場合は失敗です。</p>
+</div>
+
+<script>
+var Q = "Castle on the Hill Ed Sheeran remix";
+var enc = encodeURIComponent(Q);
+var web = "https://soundcloud.com/search?q=" + enc;
+
+function intent(pkg){
+  return "intent://soundcloud.com/search?q=" + enc
+    + "#Intent;scheme=https;action=android.intent.action.VIEW"
+    + (pkg ? ";package=" + pkg : "")
+    + ";S.browser_fallback_url=" + encodeURIComponent(web) + ";end";
+}
+
+var TESTS = [
+  ["現状のPC向けリンク",
+   "普通のhttpsリンク。Androidではアプリに横取りされるはず。", web],
+  ["intent:// + Chrome指定",
+   "いま入れてある修正。Chromeが自分自身を起動できず無効かもしれない。",
+   intent("com.android.chrome")],
+  ["intent:// パッケージ指定なし",
+   "アプリ選択画面が出れば、そこでChromeを選べる。", intent(null)],
+  ["soundcloud:// アプリ内検索",
+   "アプリ側で検索が走れば一番良い結果。未公開の形式なので不発もありうる。",
+   "soundcloud://search?q=" + enc],
+  ["m.soundcloud.com",
+   "別ホストなのでApp Linksの対象外かもしれない。",
+   "https://m.soundcloud.com/search?q=" + enc],
+  ["検索パスを変える",
+   "/search/sounds が未登録なら横取りされない可能性がある。",
+   "https://soundcloud.com/search/sounds?q=" + enc],
+  ["Firefoxで開く",
+   "Chrome以外のブラウザを指定する。入っていなければ通常のリンクに戻る。",
+   intent("org.mozilla.firefox")]
+];
+
+var env = document.getElementById("env");
+var standalone = window.matchMedia("(display-mode: standalone)").matches;
+env.innerHTML = "<b>検索語</b> " + Q
+  + "<br><b>表示モード</b> " + (standalone ? "アプリ（standalone）" : "ブラウザ")
+  + "<br><b>UA</b> " + navigator.userAgent;
+
+var box = document.getElementById("tests");
+TESTS.forEach(function(t, i){
+  var d = document.createElement("div");
+  d.className = "t";
+  var h = document.createElement("h2");
+  h.innerHTML = "<span class=\"n\">" + (i + 1) + "</span>";
+  h.appendChild(document.createTextNode(t[0]));
+  var p = document.createElement("p");
+  p.textContent = t[1];
+  var a = document.createElement("a");
+  a.className = "go";
+  a.href = t[2];
+  a.rel = "noopener";
+  a.textContent = "試す";
+  if (t[2].indexOf("http") === 0) a.target = "_blank";
+  var c = document.createElement("code");
+  c.textContent = t[2];
+  d.appendChild(h); d.appendChild(p); d.appendChild(a); d.appendChild(c);
+  box.appendChild(d);
+});
+</script>
