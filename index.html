@@ -191,6 +191,20 @@ footer a{color:var(--muted)}
   .wrap{padding:20px 14px 60px} h1{font-size:27px} #q{font-size:17px}
   .tagline{font-size:10.5px;letter-spacing:.10em}
 }
+
+/* ---- 通知（Androidでの検索語コピーに使う） */
+#toast{
+  position:fixed; left:50%; bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  transform:translate(-50%,8px); max-width:min(92vw,520px);
+  background:var(--surface-2); color:var(--ink);
+  border:1px solid var(--line); border-radius:10px;
+  padding:11px 16px; font-size:13px; line-height:1.5; text-align:center;
+  box-shadow:0 8px 28px rgba(0,0,0,.45);
+  opacity:0; pointer-events:none; z-index:60;
+  transition:opacity .18s ease, transform .18s ease;
+}
+#toast.on{ opacity:1; transform:translate(-50%,0) }
+@media (prefers-reduced-motion:reduce){ #toast{transition:none} }
 </style>
 </head>
 <body>
@@ -527,28 +541,42 @@ const esc = s => (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;
  * SoundCloud は日本語表記では検索できないため、英語表記を優先して使う
  * （english_names.py が付与する titleEn / artistEn）。
  */
-function scUrl(s){
+function scQuery(s){
   const t = s.titleEn || s.title || '';
   const a = s.artistEn || s.artist || '';
-  return 'https://soundcloud.com/search?q='
-    + encodeURIComponent(`${t} ${a} remix`.trim());
+  return `${t} ${a} remix`.trim();
+}
+function scUrl(s){
+  return 'https://soundcloud.com/search?q=' + encodeURIComponent(scQuery(s));
 }
 
 /**
- * Android では soundcloud.com のリンクが SoundCloud アプリに横取りされ、
- * アプリは /search を扱えないのでホーム画面に落ちてしまう。
- * そこで intent:// でブラウザを明示して開く。Chrome が無い端末は
- * browser_fallback_url により通常のURLへ戻る。
- * お気に入り（個別トラックのURL）はアプリで開く方が良いので対象外。
+ * Android では SoundCloud アプリが soundcloud.com 配下のすべてを横取りし、
+ * 検索語（?q=）を反映しない。アプリの検索画面までは開くので、検索語を
+ * クリップボードに入れてから遷移させ、貼り付けてもらう。
+ *
+ * ブラウザで検索したい場合は端末側の設定で変えられる。
+ *   設定 → アプリ → SoundCloud → 標準で開く → 対応リンクを開く をオフ
+ * こうすると PC と同じく検索結果が直接表示される。
+ *
+ * intent:// でブラウザを明示する方法は実機で機能しなかった（Chrome は
+ * 自分自身を起動せず、パッケージ指定なしでも結局アプリへ渡る）。
+ * m.soundcloud.com も /search/sounds も同様に横取りされる。
  */
 const IS_ANDROID = /Android/i.test(navigator.userAgent || '');
-function scHref(s){
-  const url = scUrl(s);
-  if (!IS_ANDROID) return url;
-  return 'intent://' + url.slice(8)
-    + '#Intent;scheme=https;action=android.intent.action.VIEW'
-    + ';package=com.android.chrome'
-    + ';S.browser_fallback_url=' + encodeURIComponent(url) + ';end';
+
+let toastTimer = null;
+function toast(msg){
+  let el = document.getElementById('toast');
+  if (!el){
+    el = document.createElement('div');
+    el.id = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('on'), 3200);
 }
 
 /** 手動登録したお気に入りリミックス（soundcloud.json）。無くても動く。 */
@@ -628,7 +656,8 @@ function songHTML(s, i){
       <div class="links">
         ${s.appleUrl?`<a href="${esc(s.appleUrl)}" target="_blank" rel="noopener">Apple Music</a>`:''}
         ${s.ytUrl?`<a href="${esc(s.ytUrl)}" target="_blank" rel="noopener">YouTube</a>`:''}
-        <a href="${esc(scHref(s))}" target="_blank" rel="noopener">SoundCloud</a>
+        <a href="${esc(scUrl(s))}" data-scq="${esc(scQuery(s))}"
+           target="_blank" rel="noopener">SoundCloud</a>
       </div>
       ${favHtml}${rmx}
     </div>
@@ -816,6 +845,19 @@ document.querySelectorAll('.tabs button').forEach(b=>{
   });
 });
 document.addEventListener('click',e=>{
+  // Android はアプリに横取りされて検索語が渡らないので、
+  // 貼り付けられるようにクリップボードへ入れる（遷移はそのまま）。
+  const scq = e.target.closest('[data-scq]');
+  if (scq && IS_ANDROID){
+    const q = scq.dataset.scq;
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(q)
+        .then(()=>toast('「' + q + '」をコピーしました。検索欄に貼り付けてください'))
+        .catch(()=>toast('検索欄に「' + q + '」と入力してください'));
+    } else {
+      toast('検索欄に「' + q + '」と入力してください');
+    }
+  }
   const play = e.target.closest('.play');
   if (play){ togglePlay(play); return; }
   const prog = e.target.closest('[data-prog]');
