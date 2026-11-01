@@ -1,5 +1,5 @@
 ﻿/* CADENCE 窶・繧ｪ繝輔Λ繧､繝ｳ蟇ｾ蠢・*/
-const VERSION = 'v15';
+const VERSION = 'v16';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
@@ -26,6 +26,15 @@ self.addEventListener('activate', e => {
         keys.filter(k => k !== SHELL && k !== DATA).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
+});
+
+// ページから「いま動いているバージョン」を問い合わせられるようにする。
+// 値の出どころを VERSION ひとつに保つため、ページ側には持たせない。
+self.addEventListener('message', e => {
+  if (!e.data || e.data.type !== 'version') return;
+  const reply = { type: 'version', version: VERSION };
+  if (e.ports && e.ports[0]) e.ports[0].postMessage(reply);
+  else if (e.source) e.source.postMessage(reply);
 });
 
 self.addEventListener('fetch', e => {
@@ -61,6 +70,7 @@ self.addEventListener('fetch', e => {
       .catch(() => caches.match(req).then(r => r || caches.match('./index.html')))
   );
 });
+
 
 
 
